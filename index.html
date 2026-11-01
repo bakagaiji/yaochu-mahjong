@@ -16,11 +16,12 @@
       <div class="header-buttons"><button class="header-btn" data-action="help"><span aria-hidden="true">？</span> 遊び方</button><button class="header-btn muted" data-action="new-game">最初から</button></div>
     </header>
     <main class="game-layout">
-      <div class="game-intro"><div><span class="section-kicker">EAST ROUND · FOUR PLAYERS</span><h2>端と字だけで、打ち合う。</h2><p>13種類・各12枚の3セット仕様。カンも役満も、派手に打とう。</p></div><div class="round-chip"><strong id="round-label">東1局</strong><span id="dealer-label">親：あなた</span></div></div>
+      <div class="game-intro"><div><span class="section-kicker">EAST ROUND · FOUR PLAYERS</span><h2>端と字だけで、打ち合う。</h2><p>13種類・各12枚の3セット仕様。ドラ・裏ドラとカンで、派手に打とう。</p></div><div class="round-chip"><strong id="round-label">東1局</strong><span id="dealer-label">親：あなた</span></div></div>
       <section class="table-zone" aria-label="麻雀卓">
         <div id="opp-grid" class="opp-grid"></div>
         <div class="table-felt">
-          <div class="felt-topline"><span class="felt-label">DISCARDS <span class="circle-marker"></span> 捨て牌</span><div class="center-stats"><span>残り <strong id="wall-count">96</strong> 枚</span><span>カン <strong id="kan-count">0</strong> / 8　供託 <strong id="riichi-pot">0</strong> 点</span></div></div>
+          <div class="felt-topline"><span class="felt-label">DISCARDS <span class="circle-marker"></span> 捨て牌</span><div class="center-stats"><span>残り <strong id="wall-count">80</strong> 枚</span><span>カン <strong id="kan-count">0</strong> / 8　供託 <strong id="riichi-pot">0</strong> 点</span></div></div>
+          <div id="dora-panel" class="dora-panel" aria-label="現在のドラ表示牌"></div>
           <div id="river-grid" class="river-grid"></div>
         </div>
       </section>

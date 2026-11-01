@@ -28,3 +28,13 @@ test('eighth kan aborts without drawing or moving points',()=>{
   assert.equal(r.phase,'hand-end');assert.equal(r.outcome.type,'abort');assert.equal(r.kan,8);
   assert.equal(r.after,r.before);assert.deepEqual(r.pointsAfter,r.points);
 });
+test('three-set table reserves 8 rinshan and 8 paired indicators, starts with one visible dora',()=>{
+  const g=setup();const r=g.eval(`(()=>{const seen=[...state.wall,...state.rinshan,...state.doraIndicators,...state.uraIndicators,...state.players.flatMap(p=>p.hand)];return {wall:state.wall.length,rinshan:state.rinshan.length,indicators:state.doraIndicators.length,ura:state.uraIndicators.length,total:seen.length,countByType:IDS.map(t=>seen.filter(x=>x===t).length),shown:context(0,'ron','m1').doraIndicators.length,hidden:context(0,'ron','m1').uraIndicators.length};})()`);
+  assert.equal(r.wall,80);assert.equal(r.rinshan,8);assert.equal(r.indicators,8);assert.equal(r.ura,8);
+  assert.equal(r.total,156);assert.ok(r.countByType.every(x=>x===12));
+  assert.equal(r.shown,1);assert.equal(r.hidden,0);
+});
+test('one kan reveals one more indicator; ura indicators remain hidden without riichi',()=>{
+  const g=setup();const r=g.eval(`(()=>{const p=state.players[0];p.hand=['m1','m1','m1','m1','m9','m9','m9','p1','p1','p1','s1','s1','red','red'];p.drawIndex=13;state.phase='human-turn';declareKan(0,'ankan','m1');const before=context(0,'tsumo','m1');p.riichi=true;const after=context(0,'tsumo','m1');return {shown:before.doraIndicators.length,hidden:before.uraIndicators.length,riichiHidden:after.uraIndicators.length};})()`);
+  assert.equal(r.shown,2);assert.equal(r.hidden,0);assert.equal(r.riichiHidden,2);
+});

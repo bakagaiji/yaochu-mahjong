@@ -21,6 +21,17 @@ const DRAGONS = ['white','green','red'];
 export const WALL_COPIES = 12;
 export const RINSHAN_TILES = 8;
 export const ABORTIVE_KANS = 8;
+export const DORA_INDICATOR_PAIRS = 8;
+// In a two-number suit the next dora loops 1 ↔ 9. Winds and dragons keep their usual cycles.
+export function doraFromIndicator(tile){
+  const cycles=[['m1','m9'],['p1','p9'],['s1','s9'],['east','south','west','north'],['white','green','red']];
+  for(const cycle of cycles){const idx=cycle.indexOf(tile);if(idx>=0)return cycle[(idx+1)%cycle.length];}
+  throw new Error('Invalid dora indicator '+tile);
+}
+export function countDora(tiles,melds,indicators){
+  const counts=tileCounts([...tiles,...melds.flatMap(meldTiles)]);
+  return indicators.reduce((total,indicator)=>total+counts[IDS.indexOf(doraFromIndicator(indicator))],0);
+}
 
 export function shuffle(arr, random=Math.random) {
   const result=[...arr];
@@ -113,7 +124,7 @@ function evaluateForm(form,tiles,context,completedAsPair){
   const completedTriplet=(winType==='ron' && !completedAsPair && form.kind==='standard')
     ?form.sets.findIndex(t=>t===context.winningTile):-1;
   if(yakuman.length){
-    return {form:form.kind, yaku:yakuman.map(name=>({name,han:0})),yakuman:yakuman.length,han:0,fu:0,base:baseFromHanFu(0,0,yakuman.length)};
+    return {form:form.kind, yaku:yakuman.map(name=>({name,han:0})),yakuman:yakuman.length,han:0,fu:0,dora:0,uraDora:0,base:baseFromHanFu(0,0,yakuman.length)};
   }
   const yaku=[];
   const add=(name,han)=>yaku.push({name,han});
@@ -139,9 +150,13 @@ function evaluateForm(form,tiles,context,completedAsPair){
   const suitTypes=new Set(whole.filter(t=>!['honor','dragon'].includes(TILE_INFO[t].group)).map(t=>TILE_INFO[t].group));
   const haveHonor=whole.some(t=>['honor','dragon'].includes(TILE_INFO[t].group));
   if(suitTypes.size===1 && haveHonor)add('混一色',openHand?2:3);
+  const dora=countDora(tiles,melds,context.doraIndicators||[]);
+  const uraDora=riichi && !openHand ? countDora(tiles,melds,context.uraIndicators||[]) : 0;
+  if(dora)add('ドラ',dora);
+  if(uraDora)add('裏ドラ',uraDora);
   const han=yaku.reduce((n,y)=>n+y.han,0);
   const fu=calcFu(form,context,allSets,completedTriplet);
-  return {form:form.kind,yaku,yakuman:0,han,fu,base:baseFromHanFu(han,fu)};
+  return {form:form.kind,yaku,yakuman:0,han,fu,dora,uraDora,base:baseFromHanFu(han,fu)};
 }
 /** Context: {melds, seat, dealer, winType:'ron'|'tsumo', winningTile, riichi, ippatsu}. */
 export function evaluateWin(tiles,context){

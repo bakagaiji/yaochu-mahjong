@@ -1,9 +1,9 @@
-import {IDS,TILE_INFO,createWall,sortTiles,seatWind,evaluateWin,getWaits,getTenpaiDiscards,missingTiles,calculatePayments,WALL_COPIES,RINSHAN_TILES,ABORTIVE_KANS,meldTiles} from './engine.js';
+import {IDS,TILE_INFO,createWall,sortTiles,seatWind,evaluateWin,getWaits,getTenpaiDiscards,missingTiles,calculatePayments,WALL_COPIES,RINSHAN_TILES,ABORTIVE_KANS,DORA_INDICATOR_PAIRS,meldTiles} from './engine.js';
 
 const $=s=>document.querySelector(s);
 const names=['あなた','CPU・青龍','CPU・白虎','CPU・朱雀'];
 const windText={east:'東',south:'南',west:'西',north:'北'};
-const storeKey='yaochu-mahjong-v2';
+const storeKey='yaochu-mahjong-v3';
 let state=null;
 let timer=null;
 let helpOpen=false;
@@ -12,18 +12,22 @@ let busy=false;
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function announce(message){state.notice=message;state.logs.unshift(message);state.logs=state.logs.slice(0,9);}
 function save(){try{localStorage.setItem(storeKey,JSON.stringify(state));}catch{}}
-function load(){try{const s=JSON.parse(localStorage.getItem(storeKey));return s?.version===2 ? s : null;}catch{return null;}}
+function load(){try{const s=JSON.parse(localStorage.getItem(storeKey));return s?.version===3 && s?.doraIndicators?.length===DORA_INDICATOR_PAIRS && s?.uraIndicators?.length===DORA_INDICATOR_PAIRS ? s : null;}catch{return null;}}
 function update(){render();save();}
 function cancelTimer(){if(timer){clearTimeout(timer);timer=null;}}
 function schedule(fn,ms=550){cancelTimer();timer=setTimeout(()=>{timer=null;fn();},ms);}
 function newGame(){
   cancelTimer();busy=false;showWaits=false;
-  state={version:2,round:1,dealer:0,riichiPot:0,kanCount:0,rinshan:[],rinshanWin:false,players:names.map(name=>({name,points:50000,hand:[],melds:[],discards:[],riichi:false,ippatsu:false,justRiichi:false,riichiPassed:false,tempFuriten:false,forbidden:null,drawIndex:-1})),wall:[],turn:0,phase:'init',notice:'',logs:[],lastDiscard:null,pending:null,riichiSelecting:false,firstDiscard:[true,true,true,true],handEnded:false};
+  state={version:3,round:1,dealer:0,riichiPot:0,kanCount:0,rinshan:[],doraIndicators:[],uraIndicators:[],rinshanWin:false,players:names.map(name=>({name,points:50000,hand:[],melds:[],discards:[],riichi:false,ippatsu:false,justRiichi:false,riichiPassed:false,tempFuriten:false,forbidden:null,drawIndex:-1})),wall:[],turn:0,phase:'init',notice:'',logs:[],lastDiscard:null,pending:null,riichiSelecting:false,firstDiscard:[true,true,true,true],handEnded:false};
   startRound();
 }
 function startRound(){
   state.wall=createWall();
   state.rinshan=state.wall.splice(0,RINSHAN_TILES);
+  // Each pair contains one visible indicator and one concealed ura indicator.
+  const indicatorPool=state.wall.splice(0,DORA_INDICATOR_PAIRS*2);
+  state.doraIndicators=indicatorPool.filter((_,i)=>i%2===0);
+  state.uraIndicators=indicatorPool.filter((_,i)=>i%2===1);
   state.kanCount=0;state.rinshanWin=false;
   state.dealer=state.round-1;
   state.players.forEach(p=>{p.hand=[];p.melds=[];p.discards=[];p.riichi=false;p.ippatsu=false;p.justRiichi=false;p.riichiPassed=false;p.tempFuriten=false;p.drawIndex=-1;p.forbidden=null;});
@@ -37,7 +41,10 @@ function startRound(){
   schedule(startTurn,700);
 }
 function context(seat,winType,winningTile){
-  const p=state.players[seat];return {melds:p.melds,seat,dealer:state.dealer,winType,winningTile,riichi:p.riichi,ippatsu:p.ippatsu,rinshan:state.rinshanWin};
+  const p=state.players[seat];
+  const indicators=Math.min(state.kanCount+1,DORA_INDICATOR_PAIRS);
+  return {melds:p.melds,seat,dealer:state.dealer,winType,winningTile,riichi:p.riichi,ippatsu:p.ippatsu,rinshan:state.rinshanWin,
+    doraIndicators:state.doraIndicators.slice(0,indicators),uraIndicators:p.riichi?state.uraIndicators.slice(0,indicators):[]};
 }
 function makeWinCheck(seat,tile,type,extra={}){const p=state.players[seat];return evaluateWin(type==='tsumo'?p.hand:[...p.hand,tile],{...context(seat,type,tile),...extra});}
 function isFuriten(seat){const p=state.players[seat];if(p.riichiPassed||p.tempFuriten)return true;const waits=getWaits(p.hand,p.melds);return waits.some(t=>p.discards.includes(t));}
@@ -318,7 +325,9 @@ function finishWin(winner,winType,tile,loser,win){
   const p=state.players[winner];
   const concealed=[...p.hand];
   if(winType==='tsumo' && p.drawIndex>=0)concealed.splice(p.drawIndex,1);
-  state.outcome={type:'win',winner,winType,tile,loser,win,pay,pot,scoreName,concealed:sortTiles(concealed),melds:p.melds.map(m=>({...m}))};
+  const indicatorCount=Math.min(state.kanCount+1,DORA_INDICATOR_PAIRS);
+  state.outcome={type:'win',winner,winType,tile,loser,win,pay,pot,scoreName,concealed:sortTiles(concealed),melds:p.melds.map(m=>({...m})),
+    doraIndicators:state.doraIndicators.slice(0,indicatorCount),uraIndicators:p.riichi?state.uraIndicators.slice(0,indicatorCount):[]};
   announce(`${names[winner]}、${winType==='tsumo'?'ツモ':'ロン'}！ ${scoreName}。`);
   update();
 }
@@ -361,6 +370,19 @@ function displayPlayer(p,i){
     <div class="opp-backs" aria-label="手牌${p.hand.length}枚">${Array.from({length:Math.min(p.hand.length,13)},()=>'<span class="tile-back"></span>').join('')}</div>
     ${p.melds.length?`<div class="opp-melds">${p.melds.map(m=>meldMarkup(m)).join('')}</div>`:''}
   </div>`;
+}
+function indicatorRow(label,indicators){
+  return `<div class="indicator-row"><span class="indicator-caption">${label}</span><div class="indicator-tiles">${indicators.map(t=>tileMarkup(t)).join('')}</div></div>`;
+}
+function renderDoraIndicators(){
+  const count=Math.min(state.kanCount+1,DORA_INDICATOR_PAIRS);
+  return indicatorRow('ドラ表示牌',state.doraIndicators.slice(0,count));
+}
+function renderResultDora(o){
+  const visible=indicatorRow('ドラ表示牌',o.doraIndicators||[]);
+  const ura=o.uraIndicators?.length?indicatorRow('裏ドラ表示牌',o.uraIndicators):'';
+  const summary=o.win.yakuman?'役満のためドラ加算なし':`ドラ ${o.win.dora||0}翻 ／ 裏ドラ ${o.win.uraDora||0}翻`;
+  return `<div class="result-indicators">${visible}${ura}<div class="dora-summary">${summary}</div></div>`;
 }
 function renderRiver(seat){
   const p=state.players[seat];const active=state.lastDiscard?.seat===seat;
@@ -414,12 +436,12 @@ function renderOutcome(){
   const o=state.outcome;
   if(!o)return '';
   const content=o.type==='win'
-  ?`<span class="section-kicker">${o.winType==='tsumo'?'TSUMO':'RON'} · 東${state.round}局</span><h2>${names[o.winner]}のアガリ</h2><div class="agari-label">完成した手牌（右端がアガリ牌）</div><div class="agari-row"><div class="agari-concealed">${(o.concealed||[]).map(t=>tileMarkup(t)).join('')}${tileMarkup(o.tile,'winning-tile')}</div>${o.melds?.length?`<div class="agari-melds">${o.melds.map(m=>meldMarkup(m)).join('')}</div>`:''}</div><div class="big-score">${o.scoreName}</div><div class="pay-caption">${o.pay.description}${o.pot?` ＋供託${f(o.pot)}点`:''}</div><div class="yaku-list">${o.win.yaku.map(y=>`<span>${y.name}${y.han?` <b>${y.han}翻</b>`:''}</span>`).join('')}</div><p class="score-sub">${o.win.yakuman?`${o.win.yakuman}倍役満`:o.win.han>=13?'数え役満':`${o.win.han}翻・${o.win.fu}符`}</p>`
+  ?`<span class="section-kicker">${o.winType==='tsumo'?'TSUMO':'RON'} · 東${state.round}局</span><h2>${names[o.winner]}のアガリ</h2><div class="agari-label">完成した手牌（右端がアガリ牌）</div><div class="agari-row"><div class="agari-concealed">${(o.concealed||[]).map(t=>tileMarkup(t)).join('')}${tileMarkup(o.tile,'winning-tile')}</div>${o.melds?.length?`<div class="agari-melds">${o.melds.map(m=>meldMarkup(m)).join('')}</div>`:''}</div>${renderResultDora(o)}<div class="big-score">${o.scoreName}</div><div class="pay-caption">${o.pay.description}${o.pot?` ＋供託${f(o.pot)}点`:''}</div><div class="yaku-list">${o.win.yaku.map(y=>`<span>${y.name}${y.han?` <b>${y.han}翻</b>`:''}</span>`).join('')}</div><p class="score-sub">${o.win.yakuman?`${o.win.yakuman}倍役満`:o.win.han>=13?'数え役満':`${o.win.han}翻・${o.win.fu}符`}</p>`
   :o.type==='abort'?`<span class="section-kicker">ABORTIVE DRAW · 東${state.round}局</span><h2>8カン流れ</h2><p>8回目のカンが宣言されたため途中流局しました。ノーテン罰符はありません。</p>`
   :`<span class="section-kicker">RYŪKYOKU · 東${state.round}局</span><h2>流局</h2><p>山の牌がなくなりました。ノーテン罰符3,000点を精算します。</p><div class="draw-status">${state.players.map((p,i)=>`<div>${p.name}<b>${o.ready[i]?'テンパイ':'ノーテン'}</b><span>${o.deltas[i]>=0?'+':''}${f(o.deltas[i])}点</span></div>`).join('')}</div>`;
   return `<div class="modal-layer"><section class="modal outcome" role="dialog" aria-modal="true" aria-label="局の結果">${content}<div class="mini-scores">${state.players.map((p,i)=>`<span>${p.name} <b>${f(p.points)}</b></span>`).join('')}</div><button class="btn btn-gold wide" data-action="next">${state.round===4?'最終結果を見る':`東${state.round+1}局へ進む`}</button></section></div>`;
 }
-function renderHelp(){return `<div class="modal-layer" data-backdrop="help"><section class="modal help" role="dialog" aria-modal="true" aria-label="遊び方"><div class="modal-heading"><span class="section-kicker">HOW TO PLAY</span><button class="close" data-action="close-help" aria-label="閉じる">×</button></div><h2>么九麻雀の遊び方</h2><p>1・9の数牌6種類と字牌7種類だけを使い、あなた対CPU3人で戦う東風戦です。</p><div class="rule-grid"><div><b>牌は計156枚</b><span>13種類を各12枚。52枚を配牌、残り104枚のうち8枚は嶺上牌として確保します。</span></div><div><b>アガリの形</b><span>刻子4組＋雀頭、七対子、国士無双。順子は作れません。</span></div><div><b>できる宣言</b><span>リーチ・ポン・ロン・ツモ・暗槓・大明槓・加槓。チー・ドラ・裏ドラはありません。</span></div><div><b>点数と進行</b><span>5万点持ち。通常の翻・符を基準に計算します。親の連荘・本場なしで東1〜4局です。</span></div><div><b>ロンとフリテン</b><span>自分の捨て牌に待ち牌があればロン不可。ロン見送り後は次の自摸まで不可（リーチ中の見送りは局終了まで不可）。同時ロンは頭ハネです。</span></div><div><b>流局</b><span>通常の山が尽きると流局（3,000点精算）。8カン流れは途中流局（精算なし）。リーチ供託は次局へ持ち越し。</span></div></div><p class="help-note">么九牌12枚仕様に合わせたオリジナルルールです。カン後は嶺上牌を引き、嶺上開花・槍槓もあります。立直後のカンは不可。暗槓への国士無双の槍槓は採用しません。ポン直後の同種打牌は不可。CPUは他家の手牌を覗きません。</p><button class="btn btn-gold wide" data-action="close-help">対局に戻る</button></section></div>`;}
+function renderHelp(){return `<div class="modal-layer" data-backdrop="help"><section class="modal help" role="dialog" aria-modal="true" aria-label="遊び方"><div class="modal-heading"><span class="section-kicker">HOW TO PLAY</span><button class="close" data-action="close-help" aria-label="閉じる">×</button></div><h2>么九麻雀の遊び方</h2><p>1・9の数牌6種類と字牌7種類だけを使い、あなた対CPU3人で戦う東風戦です。</p><div class="rule-grid"><div><b>牌は計156枚</b><span>13種類を各12枚。52枚を配牌、残り104枚のうち24枚をドラ表示牌8枚・裏ドラ表示牌8枚・嶺上牌8枚として確保します。通常山は80枚です。</span></div><div><b>アガリの形</b><span>刻子4組＋雀頭、七対子、国士無双。順子は作れません。</span></div><div><b>できる宣言</b><span>リーチ・ポン・ロン・ツモ・暗槓・大明槓・加槓。チー・赤ドラはありません。ドラ・裏ドラ・カンドラ・カン裏ドラがあります。</span></div><div><b>点数と進行</b><span>5万点持ち。通常の翻・符を基準に計算します。親の連荘・本場なしで東1〜4局です。</span></div><div><b>ロンとフリテン</b><span>自分の捨て牌に待ち牌があればロン不可。ロン見送り後は次の自摸まで不可（リーチ中の見送りは局終了まで不可）。同時ロンは頭ハネです。</span></div><div><b>流局</b><span>通常の山が尽きると流局（3,000点精算）。8カン流れは途中流局（精算なし）。立直アガリには裏ドラ、カンごとに新たな表示牌が増えます。役満にはドラを加算しません。リーチ供託は次局へ持ち越し。</span></div></div><p class="help-note">么九牌12枚仕様に合わせたオリジナルルールです。ドラは1↔9、東→南→西→北→東、白→發→中→白の順で、重複表示牌のドラも重複計算します。カン後は嶺上牌を引き、嶺上開花・槍槓もあります。立直後のカンは不可。暗槓への国士無双の槍槓は採用しません。ポン直後の同種打牌は不可。CPUは他家の手牌を覗きません。</p><button class="btn btn-gold wide" data-action="close-help">対局に戻る</button></section></div>`;}
 function render(){
   if(!state)return;
   $('#round-label').textContent=`東${state.round}局`;
@@ -427,6 +449,7 @@ function render(){
   $('#wall-count').textContent=state.wall.length;
   $('#riichi-pot').textContent=f(state.riichiPot);
   $('#kan-count').textContent=state.kanCount;
+  $('#dora-panel').innerHTML=renderDoraIndicators();
   $('#opp-grid').innerHTML=[1,2,3].map(i=>displayPlayer(state.players[i],i)).join('');
   $('#river-grid').innerHTML=[2,3,1,0].map(i=>renderRiver(i)).join('');
   $('#my-score').textContent=f(state.players[0].points);

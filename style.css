@@ -30,3 +30,16 @@ body{margin:0;min-width:320px;background:radial-gradient(ellipse at top left,#fd
 .agari-melds .meld-tiles{padding:4px;background:#f3f6f1;border-radius:5px}
 .agari-concealed .winning-tile{margin-left:7px;box-shadow:0 0 0 2px #be943a,0 2px 4px #0002}
 @media(max-width:720px){.agari-concealed .tile-face{--tile-w:clamp(20px,calc((100vw - 68px)/14),29px);--tile-h:calc(var(--tile-w)*1.36)}.agari-concealed{gap:2px}.agari-concealed .winning-tile{margin-left:4px}.modal.outcome{padding:18px 12px}.center-stats{flex-wrap:wrap;justify-content:flex-end}}
+
+/* Dora and ura-dora indicators. The latter only appear after a riichi win. */
+.dora-panel{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px;padding:8px 10px;background:#ffffff14;border-radius:9px;border:1px solid #ffffff25}
+.indicator-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.indicator-caption{font-size:11px;font-weight:700;white-space:nowrap;color:#dcecdf}
+.indicator-tiles{display:flex;gap:3px;flex-wrap:wrap}
+.dora-panel .tile-face{--tile-w:23px;--tile-h:31px}
+.result-indicators{background:#f0f5ef;border:1px solid #e0e9dc;border-radius:9px;padding:10px 11px;margin:5px auto 14px;max-width:470px;text-align:left}
+.result-indicators .indicator-row{margin:4px 0 8px}
+.result-indicators .indicator-caption{color:#4c7466;min-width:81px}
+.result-indicators .tile-face{--tile-w:24px;--tile-h:33px}
+.dora-summary{font-size:12px;font-weight:700;color:#356455;margin:8px 0 0}
+@media(max-width:720px){.dora-panel{margin-top:8px;padding:7px;gap:4px}.dora-panel .tile-face{--tile-w:19px;--tile-h:26px}.indicator-caption{font-size:10px}.result-indicators{padding:7px}.result-indicators .tile-face{--tile-w:22px;--tile-h:30px}}
