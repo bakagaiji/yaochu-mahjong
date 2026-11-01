@@ -8,14 +8,14 @@ function simulate(){
  vm.createContext(ctx);
  let run=`${engine}\n${app}\n`;
  vm.runInContext(run,ctx,{filename:'majiang.js'});
- const status=()=>vm.runInContext('({phase:state.phase, round:state.round, wall:state.wall.length, points:state.players.map(p=>p.points), pot:state.riichiPot})',ctx);
+ const status=()=>vm.runInContext('({phase:state.phase, round:state.round, wall:state.wall.length, kans:state.kanCount, points:state.players.map(p=>p.points), pot:state.riichiPot})',ctx);
  let step=0;const max=3000;
  while(step<max){
   const s=status();
   if(s.phase==='game-end')return {s,step};
   let expression=null;
   if(s.phase==='human-turn')expression=`{const p=state.players[0];if(p.drawIndex>=0&&makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))humanTsumo();else{const candidates=handOptions(p);if(!candidates.length)throw Error('No human discard');humanDiscard(candidates[0].index);}}`;
-  else if(s.phase==='human-response')expression=`humanRespond(state.pending.kind==='ron')`;
+  else if(s.phase==='human-response')expression=`humanRespond(state.pending.kind==='ron'||state.pending.kind==='chankan'?'ron':state.pending.canKan?'kan':'pon')`;
   else if(s.phase==='hand-end')expression=`nextRound()`;
   if(expression)vm.runInContext(expression,ctx);
   else {
@@ -29,6 +29,6 @@ function simulate(){
 for(let j=0;j<5;j++){
   const {s,step}=simulate();
   const total=s.points.reduce((a,b)=>a+b,0)+s.pot;
-  if(total!==100000)throw Error('Point leak: '+JSON.stringify(s));
+  if(total!==200000)throw Error('Point leak: '+JSON.stringify(s));
   if((j+1)%1===0)console.log('completed',j+1,'games last steps',step,'points',s.points);
 }
