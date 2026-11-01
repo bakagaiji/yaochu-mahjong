@@ -1,9 +1,9 @@
-import {IDS,TILE_INFO,createWall,sortTiles,seatWind,evaluateWin,getWaits,getTenpaiDiscards,missingTiles,calculatePayments,WALL_COPIES} from './engine.js';
+import {IDS,TILE_INFO,createWall,sortTiles,seatWind,evaluateWin,getWaits,getTenpaiDiscards,missingTiles,calculatePayments,WALL_COPIES,RINSHAN_TILES,ABORTIVE_KANS,meldTiles} from './engine.js';
 
 const $=s=>document.querySelector(s);
 const names=['あなた','CPU・青龍','CPU・白虎','CPU・朱雀'];
 const windText={east:'東',south:'南',west:'西',north:'北'};
-const storeKey='yaochu-mahjong-v1';
+const storeKey='yaochu-mahjong-v2';
 let state=null;
 let timer=null;
 let helpOpen=false;
@@ -12,17 +12,19 @@ let busy=false;
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function announce(message){state.notice=message;state.logs.unshift(message);state.logs=state.logs.slice(0,9);}
 function save(){try{localStorage.setItem(storeKey,JSON.stringify(state));}catch{}}
-function load(){try{const s=JSON.parse(localStorage.getItem(storeKey));return s?.version===1 ? s : null;}catch{return null;}}
+function load(){try{const s=JSON.parse(localStorage.getItem(storeKey));return s?.version===2 ? s : null;}catch{return null;}}
 function update(){render();save();}
 function cancelTimer(){if(timer){clearTimeout(timer);timer=null;}}
 function schedule(fn,ms=550){cancelTimer();timer=setTimeout(()=>{timer=null;fn();},ms);}
 function newGame(){
   cancelTimer();busy=false;showWaits=false;
-  state={version:1,round:1,dealer:0,riichiPot:0,players:names.map(name=>({name,points:25000,hand:[],melds:[],discards:[],riichi:false,ippatsu:false,justRiichi:false,riichiPassed:false,tempFuriten:false,forbidden:null,drawIndex:-1})),wall:[],turn:0,phase:'init',notice:'',logs:[],lastDiscard:null,pending:null,riichiSelecting:false,firstDiscard:[true,true,true,true],handEnded:false};
+  state={version:2,round:1,dealer:0,riichiPot:0,kanCount:0,rinshan:[],rinshanWin:false,players:names.map(name=>({name,points:50000,hand:[],melds:[],discards:[],riichi:false,ippatsu:false,justRiichi:false,riichiPassed:false,tempFuriten:false,forbidden:null,drawIndex:-1})),wall:[],turn:0,phase:'init',notice:'',logs:[],lastDiscard:null,pending:null,riichiSelecting:false,firstDiscard:[true,true,true,true],handEnded:false};
   startRound();
 }
 function startRound(){
   state.wall=createWall();
+  state.rinshan=state.wall.splice(0,RINSHAN_TILES);
+  state.kanCount=0;state.rinshanWin=false;
   state.dealer=state.round-1;
   state.players.forEach(p=>{p.hand=[];p.melds=[];p.discards=[];p.riichi=false;p.ippatsu=false;p.justRiichi=false;p.riichiPassed=false;p.tempFuriten=false;p.drawIndex=-1;p.forbidden=null;});
   for(let i=0;i<13;i++)for(let p=0;p<4;p++)state.players[p].hand.push(state.wall.pop());
@@ -35,15 +37,16 @@ function startRound(){
   schedule(startTurn,700);
 }
 function context(seat,winType,winningTile){
-  const p=state.players[seat];return {melds:p.melds,seat,dealer:state.dealer,winType,winningTile,riichi:p.riichi,ippatsu:p.ippatsu};
+  const p=state.players[seat];return {melds:p.melds,seat,dealer:state.dealer,winType,winningTile,riichi:p.riichi,ippatsu:p.ippatsu,rinshan:state.rinshanWin};
 }
-function makeWinCheck(seat,tile,type){const p=state.players[seat];return evaluateWin(type==='tsumo'?p.hand:[...p.hand,tile],context(seat,type,tile));}
+function makeWinCheck(seat,tile,type,extra={}){const p=state.players[seat];return evaluateWin(type==='tsumo'?p.hand:[...p.hand,tile],{...context(seat,type,tile),...extra});}
 function isFuriten(seat){const p=state.players[seat];if(p.riichiPassed||p.tempFuriten)return true;const waits=getWaits(p.hand,p.melds);return waits.some(t=>p.discards.includes(t));}
 function startTurn(){
   if(!state||state.handEnded)return;
   if(!state.wall.length){finishDraw();return;}
   const p=state.players[state.turn];
   p.tempFuriten=false;p.forbidden=null;
+  state.rinshanWin=false;
   const tile=state.wall.pop();p.hand.push(tile);p.drawIndex=p.hand.length-1;
   state.lastDiscard=null;
   if(state.turn===0){
@@ -67,8 +70,8 @@ function handOptions(p){const info=[];
     let ukeire=0;
     const counts=Object.fromEntries(IDS.map(t=>[t,0]));
     for(const t of copy)counts[t]++;
-    for(const m of p.melds)counts[m.tile]+=3;
-    for(const pl of state.players){for(const t of pl.discards)counts[t]++;for(const m of pl.melds)if(m!==undefined && pl!==p)counts[m.tile]+=3;}
+    for(const m of p.melds)counts[m.tile]+=meldTiles(m).length;
+    for(const pl of state.players){for(const t of pl.discards)counts[t]++;for(const m of pl.melds)if(m!==undefined && pl!==p)counts[m.tile]+=meldTiles(m).length;}
     for(const tile of IDS){
       const avail=Math.max(0,WALL_COPIES-counts[tile]);
       if(!avail)continue;
@@ -88,6 +91,13 @@ function cpuTurn(){
   const tile=p.hand[p.drawIndex];
   const win=p.drawIndex>=0?makeWinCheck(seat,tile,'tsumo'):null;
   if(win){finishWin(seat,'tsumo',tile,null,win);return;}
+  if(!p.riichi && p.drawIndex>=0){
+    const candidates=getKanCandidates(p);
+    if(candidates.length && Math.random()<0.86){
+      const candidate=candidates[0];
+      declareKan(seat,candidate.type,candidate.tile);return;
+    }
+  }
   const options=handOptions(p);
   const choice=options[0];
   if(!choice){console.error('CPU has no discard');return;}
@@ -135,7 +145,7 @@ function discard(seat,index){
     if(!p.justRiichi)p.ippatsu=false;
   }
   p.justRiichi=false;
-  p.discards.push(tile);state.firstDiscard[seat]=false;
+  p.discards.push(tile);state.firstDiscard[seat]=false;state.rinshanWin=false;
   state.lastDiscard={seat,tile};state.phase='resolving';
   announce(`${p.name}は${TILE_INFO[tile].name}を捨てました。`);update();
   schedule(resolveDiscard,seat===0?420:560);
@@ -175,42 +185,128 @@ function offerPonOrAdvance(){
   const {seat:disc,tile}=state.lastDiscard;
   const p=state.players[0];
   if(disc!==0 && !p.riichi && p.melds.length<4 && p.hand.filter(t=>t===tile).length>=2){
-    state.phase='human-response';state.pending={kind:'pon',tile,disc};
-    announce(`${TILE_INFO[tile].name}をポンできます。`);update();return;
+    state.phase='human-response';state.pending={kind:'call',tile,disc,canKan:p.hand.filter(t=>t===tile).length>=3&&canKan()};
+    announce(`${TILE_INFO[tile].name}を鳴けます。`);update();return;
   }
   cpuPonOrAdvance();
 }
 function cpuPonOrAdvance(){
   const {seat:disc,tile}=state.lastDiscard;
   for(const seat of [1,2,3].map(d=>(disc+d)%4)){
-    if(seat!==0 && shouldCpuPon(seat,tile)){
-      executePon(seat,tile,disc);return;
-    }
+    if(seat!==0 && shouldCpuDaiminkan(seat,tile)){executeDaiminkan(seat,tile,disc);return;}
+    if(seat!==0 && shouldCpuPon(seat,tile)){executePon(seat,tile,disc);return;}
   }
   state.pending=null;state.turn=(disc+1)%4;state.phase='turn-start';update();schedule(startTurn,430);
 }
 function humanRespond(accept){
   if(!state||state.phase!=='human-response'||!state.pending)return;
-  const {kind,tile,disc,win}=state.pending;
+  const {kind,tile,disc,win,canKan:offeredKan}=state.pending;
   state.pending=null;
   if(kind==='ron'){
     if(accept){finishWin(0,'ron',tile,disc,win);return;}
     const p=state.players[0];p.tempFuriten=true;if(p.riichi)p.riichiPassed=true;
     announce('ロンを見送りました。次の自摸まで同巡フリテンです。');state.phase='resolving';offerPonOrAdvance();return;
   }
-  if(kind==='pon' && accept){executePon(0,tile,disc);return;}
+  if(kind==='chankan'){
+    if(accept){finishWin(0,'ron',tile,disc,win);return;}
+    const p=state.players[0];p.tempFuriten=true;if(p.riichi)p.riichiPassed=true;
+    commitKakan(disc,tile);return;
+  }
+  if(kind==='call' && accept){
+    if(accept==='kan' && offeredKan){executeDaiminkan(0,tile,disc);return;}
+    executePon(0,tile,disc);return;
+  }
   state.phase='resolving';cpuPonOrAdvance();
 }
 function executePon(seat,tile,disc){
   const p=state.players[seat];
   for(let i=0;i<2;i++)p.hand.splice(p.hand.indexOf(tile),1);
-  p.melds.push({tile,from:disc});p.hand=sortTiles(p.hand);p.drawIndex=-1;p.forbidden=tile;
+  p.melds.push({tile,from:disc,kind:'pon',open:true});p.hand=sortTiles(p.hand);p.drawIndex=-1;p.forbidden=tile;
   state.players[disc].discards.pop();state.lastDiscard=null;
   state.players.forEach(pl=>pl.ippatsu=false);
   state.turn=seat;state.pending=null;
   announce(`${p.name}、ポン！`);
   if(seat===0){state.phase='human-turn';update();}
   else{state.phase='cpu-turn';update();schedule(cpuTurn,570);}
+}
+// One fixed 8-tile supplementary stack supports at most 7 successful kans.
+function canKan(){return state.rinshan.length>0 && state.kanCount<ABORTIVE_KANS;}
+function getKanCandidates(p){
+  if(!canKan() || p.riichi || p.drawIndex<0)return [];
+  const results=[];
+  for(const tile of IDS){
+    if(p.hand.filter(t=>t===tile).length>=4)results.push({type:'ankan',tile});
+    if(p.hand.includes(tile) && p.melds.some(m=>m.tile===tile && m.kind!=='kan'))results.push({type:'kakan',tile});
+  }
+  return results;
+}
+function shouldCpuDaiminkan(seat,tile){
+  const p=state.players[seat];
+  return seat!==0 && !p.riichi && p.melds.length<4 && canKan() && p.hand.filter(t=>t===tile).length>=3 && Math.random()<0.76;
+}
+function humanKan(type,tile){
+  if(!state || state.phase!=='human-turn' || busy)return;
+  if(!getKanCandidates(state.players[0]).some(c=>c.type===type&&c.tile===tile))return;
+  declareKan(0,type,tile);
+}
+function declareKan(seat,type,tile){
+  const p=state.players[seat];
+  if(!getKanCandidates(p).some(c=>c.type===type&&c.tile===tile))return;
+  if(type==='kakan'){
+    // A robbed added kan (chankan) is resolved before the tile is removed.
+    for(const other of [1,2,3].map(x=>(seat+x)%4)){
+      if(isFuriten(other))continue;
+      const win=makeWinCheck(other,tile,'ron',{chankan:true});
+      if(!win)continue;
+      if(other===0){
+        state.phase='human-response';state.pending={kind:'chankan',tile,disc:seat,win};
+        announce('槍槓でロンできます。');update();return;
+      }
+      finishWin(other,'ron',tile,seat,win);return;
+    }
+    commitKakan(seat,tile);return;
+  }
+  for(let i=0;i<4;i++)p.hand.splice(p.hand.indexOf(tile),1);
+  p.melds.push({tile,from:seat,kind:'kan',open:false});
+  finishKan(seat,'暗槓');
+}
+function commitKakan(seat,tile){
+  const p=state.players[seat];
+  const meld=p.melds.find(m=>m.tile===tile && m.kind!=='kan');
+  if(!meld || !p.hand.includes(tile))return;
+  p.hand.splice(p.hand.indexOf(tile),1);
+  meld.kind='kan';meld.open=true;
+  finishKan(seat,'加槓');
+}
+function executeDaiminkan(seat,tile,disc){
+  const p=state.players[seat];
+  if(!canKan() || p.hand.filter(t=>t===tile).length<3)return;
+  for(let i=0;i<3;i++)p.hand.splice(p.hand.indexOf(tile),1);
+  p.melds.push({tile,from:disc,kind:'kan',open:true});
+  state.players[disc].discards.pop();
+  finishKan(seat,'大明槓');
+}
+function finishKan(seat,label){
+  const p=state.players[seat];state.kanCount++;
+  state.players.forEach(pl=>pl.ippatsu=false);
+  state.pending=null;state.lastDiscard=null;state.riichiSelecting=false;
+  state.turn=seat;p.forbidden=null;p.drawIndex=-1;
+  announce(`${p.name}、${label}！ (${state.kanCount}カン)`);
+  if(state.kanCount>=ABORTIVE_KANS){finishAbort();return;}
+  if(!state.rinshan.length){finishAbort();return;}
+  const tile=state.rinshan.pop();p.hand.push(tile);p.drawIndex=p.hand.length-1;
+  state.rinshanWin=true;p.tempFuriten=false;
+  const win=makeWinCheck(seat,tile,'tsumo');
+  if(seat===0){
+    state.phase='human-turn';announce(win?'嶺上開花でツモできます！':'嶺上牌を引きました。カンか打牌を選んでください。');update();
+  }else{
+    state.phase='cpu-turn';update();schedule(cpuTurn,610);
+  }
+}
+function finishAbort(){
+  cancelTimer();state.handEnded=true;state.phase='hand-end';state.pending=null;
+  state.outcome={type:'abort',reason:'8カン流れ'};
+  announce('8カン流れ！ この局は途中流局（点数移動なし）です。');update();
 }
 function finishWin(winner,winType,tile,loser,win){
   cancelTimer();
@@ -219,7 +315,10 @@ function finishWin(winner,winType,tile,loser,win){
   pay.delta.forEach((v,i)=>state.players[i].points+=v);
   const pot=state.riichiPot;state.players[winner].points+=pot;state.riichiPot=0;
   const scoreName=win.yakuman?`${win.yakuman}倍役満`:win.han>=13?'数え役満':win.han>=11?'三倍満':win.han>=8?'倍満':win.han>=6?'跳満':win.han>=5||win.base===2000?'満貫':`${win.han}翻 ${win.fu}符`;
-  state.outcome={type:'win',winner,winType,tile,loser,win,pay,pot,scoreName};
+  const p=state.players[winner];
+  const concealed=[...p.hand];
+  if(winType==='tsumo' && p.drawIndex>=0)concealed.splice(p.drawIndex,1);
+  state.outcome={type:'win',winner,winType,tile,loser,win,pay,pot,scoreName,concealed:sortTiles(concealed),melds:p.melds.map(m=>({...m}))};
   announce(`${names[winner]}、${winType==='tsumo'?'ツモ':'ロン'}！ ${scoreName}。`);
   update();
 }
@@ -245,8 +344,13 @@ function nextRound(){
 }
 function tileMarkup(id,additional='',kind='visible'){
   const t=TILE_INFO[id];if(!t)return '';
-  const number=t.digit?`<span class="tile-num">${t.digit}</span><span class="tile-suit">${t.glyph}</span>`:`<span class="tile-kanji">${t.glyph}</span>`;
-  return `<span class="tile-face ${t.group} ${additional}" title="${t.name}">${number}</span>`;
+  const number=t.id==='white'?'<span class="tile-white-mark">白</span>':t.digit?`<span class="tile-num">${t.digit}</span><span class="tile-suit">${t.glyph}</span>`:`<span class="tile-kanji">${t.glyph}</span>`;
+  return `<span class="tile-face ${t.group} ${t.id} ${additional}" title="${t.name}">${number}</span>`;
+}
+function meldMarkup(m){
+  const size=m.kind==='kan'?4:3;
+  const tiles=Array.from({length:size},(_,i)=>m.open===false && (i===0||i===size-1)?'<span class="tile-back kan-back" title="暗槓"></span>':tileMarkup(m.tile)).join('');
+  return `<span class="meld-tiles" title="${m.kind==='kan'?(m.open?'槓':'暗槓'):'ポン'}">${tiles}</span>`;
 }
 const f=n=>Number(n).toLocaleString('ja-JP');
 function displayPlayer(p,i){
@@ -255,7 +359,7 @@ function displayPlayer(p,i){
     <div class="opp-row"><span class="opp-avatar">${['人','龍','虎','雀'][i]}</span><div class="opp-title"><strong>${p.name}</strong><span>${windText[seatWind(i,state.dealer)]}家 ${p.riichi?'・リーチ':''}</span></div></div>
     <span class="opp-points">${f(p.points)} <small>点</small></span>
     <div class="opp-backs" aria-label="手牌${p.hand.length}枚">${Array.from({length:Math.min(p.hand.length,13)},()=>'<span class="tile-back"></span>').join('')}</div>
-    ${p.melds.length?`<div class="opp-melds">${p.melds.map(m=>`<span>${tileMarkup(m.tile)}${tileMarkup(m.tile)}${tileMarkup(m.tile)}</span>`).join('')}</div>`:''}
+    ${p.melds.length?`<div class="opp-melds">${p.melds.map(m=>meldMarkup(m)).join('')}</div>`:''}
   </div>`;
 }
 function renderRiver(seat){
@@ -270,7 +374,7 @@ function renderHand(){
   const canTsumo=canDiscard && drawnIndex>=0 && !!makeWinCheck(0,p.hand[drawnIndex],'tsumo');
   const canRiichi=canDiscard&&!p.riichi&&!p.melds.length&&p.points>=1000 && getTenpaiDiscards(p.hand,p.melds).length>0;
   const needAction=state.phase==='human-response';
-  const showMelds=p.melds.length?`<div class="human-melds"><span class="small-caption">ポン</span>${p.melds.map(m=>`<div class="meld-block">${Array(3).fill(tileMarkup(m.tile)).join('')}</div>`).join('')}</div>`:'';
+  const showMelds=p.melds.length?`<div class="human-melds"><span class="small-caption">鳴き・カン</span>${p.melds.map(m=>`<div class="meld-block">${meldMarkup(m)}</div>`).join('')}</div>`:'';
   const buttons=p.hand.map((t,i)=>{
     const allowed=canDiscard && (!p.riichi||i===drawnIndex) && (!p.forbidden||p.forbidden!==t) && (!state.riichiSelecting||readyChoices.includes(i));
     return `<button class="hand-tile ${drawnIndex===i?'drawn':''} ${state.riichiSelecting&&readyChoices.includes(i)?'riichi-target':''}" data-discard="${i}" aria-label="${TILE_INFO[t].name}${drawnIndex===i?'（ツモ牌）':''}を捨てる" title="${TILE_INFO[t].name}" ${allowed?'':'disabled'}>${tileMarkup(t)}</button>`;
@@ -278,10 +382,11 @@ function renderHand(){
   let action='';
   if(needAction){
     const isRon=state.pending.kind==='ron';
-    action=`<button class="btn btn-gold" data-action="accept">${isRon?'ロン！':'ポン'}</button><button class="btn btn-light" data-action="decline">見送る</button>`;
+    action=isRon||state.pending.kind==='chankan'?'<button class="btn btn-gold" data-action="accept">ロン！</button><button class="btn btn-light" data-action="decline">見送る</button>':`<button class="btn btn-gold" data-action="call-pon">ポン</button>${state.pending.canKan?'<button class="btn btn-gold" data-action="call-kan">大明槓</button>':''}<button class="btn btn-light" data-action="decline">見送る</button>`;
   }else if(canDiscard){
     action+=`<button class="btn btn-gold" data-action="tsumo" ${canTsumo?'':'disabled'}>ツモ！</button>`;
     action+=`<button class="btn ${state.riichiSelecting?'btn-gold':'btn-light'}" data-action="riichi" ${canRiichi||state.riichiSelecting?'':'disabled'}>${state.riichiSelecting?'リーチ解除':'リーチ −1,000'}</button>`;
+    for(const candidate of getKanCandidates(p)){action+=`<button class="btn btn-light" data-kan-type="${candidate.type}" data-kan-tile="${candidate.tile}">${candidate.type==='ankan'?'暗槓':'加槓'}・${TILE_INFO[candidate.tile].name}</button>`;}
     action+=`<button class="btn btn-ghost" data-action="waits">${showWaits?'待ち表示を閉じる':'待ち牌を確認'}</button>`;
   }else{
     action=`<span class="waiting-action">${state.phase==='hand-end'?'この局は終了しました':state.phase==='game-end'?'東風戦終了':`対局進行中…`}</span>`;
@@ -309,17 +414,19 @@ function renderOutcome(){
   const o=state.outcome;
   if(!o)return '';
   const content=o.type==='win'
-  ?`<span class="section-kicker">${o.winType==='tsumo'?'TSUMO':'RON'} · 東${state.round}局</span><h2>${names[o.winner]}のアガリ</h2><div class="outcome-tile">${tileMarkup(o.tile)}</div><div class="big-score">${o.scoreName}</div><div class="pay-caption">${o.pay.description}${o.pot?` ＋供託${f(o.pot)}点`:''}</div><div class="yaku-list">${o.win.yaku.map(y=>`<span>${y.name}${y.han?` <b>${y.han}翻</b>`:''}</span>`).join('')}</div><p class="score-sub">${o.win.yakuman?`${o.win.yakuman}倍役満`:o.win.han>=13?'数え役満':`${o.win.han}翻・${o.win.fu}符`}</p>`
+  ?`<span class="section-kicker">${o.winType==='tsumo'?'TSUMO':'RON'} · 東${state.round}局</span><h2>${names[o.winner]}のアガリ</h2><div class="agari-label">完成した手牌（右端がアガリ牌）</div><div class="agari-row"><div class="agari-concealed">${(o.concealed||[]).map(t=>tileMarkup(t)).join('')}${tileMarkup(o.tile,'winning-tile')}</div>${o.melds?.length?`<div class="agari-melds">${o.melds.map(m=>meldMarkup(m)).join('')}</div>`:''}</div><div class="big-score">${o.scoreName}</div><div class="pay-caption">${o.pay.description}${o.pot?` ＋供託${f(o.pot)}点`:''}</div><div class="yaku-list">${o.win.yaku.map(y=>`<span>${y.name}${y.han?` <b>${y.han}翻</b>`:''}</span>`).join('')}</div><p class="score-sub">${o.win.yakuman?`${o.win.yakuman}倍役満`:o.win.han>=13?'数え役満':`${o.win.han}翻・${o.win.fu}符`}</p>`
+  :o.type==='abort'?`<span class="section-kicker">ABORTIVE DRAW · 東${state.round}局</span><h2>8カン流れ</h2><p>8回目のカンが宣言されたため途中流局しました。ノーテン罰符はありません。</p>`
   :`<span class="section-kicker">RYŪKYOKU · 東${state.round}局</span><h2>流局</h2><p>山の牌がなくなりました。ノーテン罰符3,000点を精算します。</p><div class="draw-status">${state.players.map((p,i)=>`<div>${p.name}<b>${o.ready[i]?'テンパイ':'ノーテン'}</b><span>${o.deltas[i]>=0?'+':''}${f(o.deltas[i])}点</span></div>`).join('')}</div>`;
   return `<div class="modal-layer"><section class="modal outcome" role="dialog" aria-modal="true" aria-label="局の結果">${content}<div class="mini-scores">${state.players.map((p,i)=>`<span>${p.name} <b>${f(p.points)}</b></span>`).join('')}</div><button class="btn btn-gold wide" data-action="next">${state.round===4?'最終結果を見る':`東${state.round+1}局へ進む`}</button></section></div>`;
 }
-function renderHelp(){return `<div class="modal-layer" data-backdrop="help"><section class="modal help" role="dialog" aria-modal="true" aria-label="遊び方"><div class="modal-heading"><span class="section-kicker">HOW TO PLAY</span><button class="close" data-action="close-help" aria-label="閉じる">×</button></div><h2>么九麻雀の遊び方</h2><p>1・9の数牌6種類と字牌7種類だけを使い、あなた対CPU3人で戦う東風戦です。</p><div class="rule-grid"><div><b>牌は計104枚</b><span>13種類を各8枚。最初に13枚ずつ配り、残り52枚を山にします。</span></div><div><b>アガリの形</b><span>刻子4組＋雀頭、七対子、国士無双。順子は作れません。</span></div><div><b>できる宣言</b><span>リーチ・ポン・ロン・ツモ。チー・カン・ドラ・裏ドラはありません。</span></div><div><b>点数と進行</b><span>通常の翻・符の点数計算に準拠。親の連荘と本場はなく、東1〜4局で終了します。</span></div><div><b>ロンとフリテン</b><span>自分の捨て牌に待ち牌があればロン不可。ロン見送り後は次の自摸まで不可（リーチ中の見送りは局終了まで不可）。同時ロンは頭ハネです。</span></div><div><b>流局</b><span>山が尽きると流局。テンパイ・ノーテン間で3,000点を精算。リーチ供託は次局へ持ち越し。</span></div></div><p class="help-note">么九牌8枚仕様に合わせたオリジナルルールです。ポン直後は同じ種類の牌を捨てられません。CPUは手牌を覗かず、公開情報だけで判断します。</p><button class="btn btn-gold wide" data-action="close-help">対局に戻る</button></section></div>`;}
+function renderHelp(){return `<div class="modal-layer" data-backdrop="help"><section class="modal help" role="dialog" aria-modal="true" aria-label="遊び方"><div class="modal-heading"><span class="section-kicker">HOW TO PLAY</span><button class="close" data-action="close-help" aria-label="閉じる">×</button></div><h2>么九麻雀の遊び方</h2><p>1・9の数牌6種類と字牌7種類だけを使い、あなた対CPU3人で戦う東風戦です。</p><div class="rule-grid"><div><b>牌は計156枚</b><span>13種類を各12枚。52枚を配牌、残り104枚のうち8枚は嶺上牌として確保します。</span></div><div><b>アガリの形</b><span>刻子4組＋雀頭、七対子、国士無双。順子は作れません。</span></div><div><b>できる宣言</b><span>リーチ・ポン・ロン・ツモ・暗槓・大明槓・加槓。チー・ドラ・裏ドラはありません。</span></div><div><b>点数と進行</b><span>5万点持ち。通常の翻・符を基準に計算します。親の連荘・本場なしで東1〜4局です。</span></div><div><b>ロンとフリテン</b><span>自分の捨て牌に待ち牌があればロン不可。ロン見送り後は次の自摸まで不可（リーチ中の見送りは局終了まで不可）。同時ロンは頭ハネです。</span></div><div><b>流局</b><span>通常の山が尽きると流局（3,000点精算）。8カン流れは途中流局（精算なし）。リーチ供託は次局へ持ち越し。</span></div></div><p class="help-note">么九牌12枚仕様に合わせたオリジナルルールです。カン後は嶺上牌を引き、嶺上開花・槍槓もあります。立直後のカンは不可。暗槓への国士無双の槍槓は採用しません。ポン直後の同種打牌は不可。CPUは他家の手牌を覗きません。</p><button class="btn btn-gold wide" data-action="close-help">対局に戻る</button></section></div>`;}
 function render(){
   if(!state)return;
   $('#round-label').textContent=`東${state.round}局`;
   $('#dealer-label').textContent=`親：${names[state.dealer]}`;
   $('#wall-count').textContent=state.wall.length;
   $('#riichi-pot').textContent=f(state.riichiPot);
+  $('#kan-count').textContent=state.kanCount;
   $('#opp-grid').innerHTML=[1,2,3].map(i=>displayPlayer(state.players[i],i)).join('');
   $('#river-grid').innerHTML=[2,3,1,0].map(i=>renderRiver(i)).join('');
   $('#my-score').textContent=f(state.players[0].points);
@@ -329,6 +436,7 @@ function render(){
   $('#overlays').innerHTML=(helpOpen?renderHelp():'')+(!helpOpen?renderOutcome():'');
 }
 document.addEventListener('click',event=>{
+  const kan=event.target.closest('[data-kan-type]');if(kan){humanKan(kan.dataset.kanType,kan.dataset.kanTile);return;}
   const tile=event.target.closest('[data-discard]');if(tile){humanDiscard(Number(tile.dataset.discard));return;}
   const action=event.target.closest('[data-action]')?.dataset.action;
   if(!action)return;
@@ -337,6 +445,8 @@ document.addEventListener('click',event=>{
   else if(action==='waits'){showWaits=!showWaits;update();}
   else if(action==='accept')humanRespond(true);
   else if(action==='decline')humanRespond(false);
+  else if(action==='call-pon')humanRespond('pon');
+  else if(action==='call-kan')humanRespond('kan');
   else if(action==='help'){helpOpen=true;render();}
   else if(action==='close-help'){helpOpen=false;render();}
   else if(action==='next')nextRound();
