@@ -18,7 +18,9 @@ export const IDS = TILE_TYPES.map(t=>t.id);
 export const TILE_INFO = Object.fromEntries(TILE_TYPES.map(t=>[t.id,t]));
 const WINDS = ['east','south','west','north'];
 const DRAGONS = ['white','green','red'];
-export const WALL_COPIES = 8;
+export const WALL_COPIES = 12;
+export const RINSHAN_TILES = 8;
+export const ABORTIVE_KANS = 8;
 
 export function shuffle(arr, random=Math.random) {
   const result=[...arr];
@@ -46,7 +48,8 @@ export function getForms(tiles, melds=[]){
   }
   return forms;
 }
-function fullTiles(tiles,melds){return [...tiles,...melds.flatMap(m=>Array(3).fill(m.tile))];}
+export function meldTiles(m){return Array(m.kind==='kan'?4:3).fill(m.tile);}
+function fullTiles(tiles,melds){return [...tiles,...melds.flatMap(meldTiles)];}
 function sameGroupOnly(whole,group){return whole.every(t=>TILE_INFO[t].group===group);}
 function calcFu(form,context,allSets,completedTriplet){
   if(form.kind==='chiitoi')return 25;
@@ -59,7 +62,7 @@ function calcFu(form,context,allSets,completedTriplet){
   if(pair==='east')fu+=2;
   for(const set of allSets){
     const open=set.open || (completedTriplet===set.index);
-    fu+=open?4:8; // All sets are terminal/honor.
+    fu+=set.kan?(open?16:32):(open?4:8); // All sets are terminal/honor.
   }
   return Math.ceil(fu/10)*10;
 }
@@ -90,9 +93,10 @@ export function calculatePayments(base,winType,winner,dealer,loser=null){
   return {delta,description:`ツモ ${costs}`,total:delta[winner]};
 }
 function evaluateForm(form,tiles,context,completedAsPair){
-  const {melds,winType,seat,dealer,riichi=false,ippatsu=false}=context;
+  const {melds,winType,seat,dealer,riichi=false,ippatsu=false,rinshan=false,chankan=false}=context;
+  const openHand=melds.some(m=>m.open!==false);
   const whole=fullTiles(tiles,melds);
-  const allSets=[...melds.map((m,i)=>({tile:m.tile,open:true,index:-1-i})),...(form.sets||[]).map((tile,i)=>({tile,open:false,index:i}))];
+  const allSets=[...melds.map((m,i)=>({tile:m.tile,open:m.open!==false,kan:m.kind==='kan',index:-1-i})),...(form.sets||[]).map((tile,i)=>({tile,open:false,index:i}))];
   const triplets=allSets.map(s=>s.tile);
   const yakuman=[];
   if(form.kind==='kokushi')yakuman.push('国士無双');
@@ -101,7 +105,8 @@ function evaluateForm(form,tiles,context,completedAsPair){
     const winds=WINDS.filter(t=>triplets.includes(t)).length;
     if(winds===4)yakuman.push('大四喜');
     else if(winds===3&&WINDS.includes(form.pair))yakuman.push('小四喜');
-    if(melds.length===0 && (winType==='tsumo'||completedAsPair))yakuman.push('四暗刻');
+    if(!openHand && (winType==='tsumo'||completedAsPair))yakuman.push('四暗刻');
+    if(melds.filter(m=>m.kind==='kan').length===4)yakuman.push('四槓子');
   }
   if(whole.every(t=>['honor','dragon'].includes(TILE_INFO[t].group)))yakuman.push('字一色');
   if(whole.every(t=>!['honor','dragon'].includes(TILE_INFO[t].group)))yakuman.push('清老頭');
@@ -112,9 +117,11 @@ function evaluateForm(form,tiles,context,completedAsPair){
   }
   const yaku=[];
   const add=(name,han)=>yaku.push({name,han});
-  if(riichi && !melds.length)add('立直',1);
-  if(ippatsu && riichi && !melds.length)add('一発',1);
-  if(winType==='tsumo' && !melds.length)add('門前清自摸和',1);
+  if(riichi && !openHand)add('立直',1);
+  if(ippatsu && riichi && !openHand)add('一発',1);
+  if(winType==='tsumo' && !openHand)add('門前清自摸和',1);
+  if(rinshan && winType==='tsumo')add('嶺上開花',1);
+  if(chankan && winType==='ron')add('槍槓',1);
   add('混老頭',2);
   if(form.kind==='standard'){
     add('対々和',2);
@@ -125,12 +132,13 @@ function evaluateForm(form,tiles,context,completedAsPair){
     for(const found of triplets.filter(x=>x==='east'))add('場風・東',1);
     const closedTriplets=allSets.filter(s=>!s.open && s.index!==completedTriplet).length;
     if(closedTriplets>=3)add('三暗刻',2);
+    if(melds.filter(m=>m.kind==='kan').length>=3)add('三槓子',2);
     if(DRAGONS.filter(t=>triplets.includes(t)).length===2 && DRAGONS.includes(form.pair))add('小三元',2);
     if(['1','9'].some(d=>['m','p','s'].every(g=>triplets.includes(`${g}${d}`))))add('三色同刻',2);
   } else if(form.kind==='chiitoi')add('七対子',2);
   const suitTypes=new Set(whole.filter(t=>!['honor','dragon'].includes(TILE_INFO[t].group)).map(t=>TILE_INFO[t].group));
   const haveHonor=whole.some(t=>['honor','dragon'].includes(TILE_INFO[t].group));
-  if(suitTypes.size===1 && haveHonor)add('混一色',melds.length?2:3);
+  if(suitTypes.size===1 && haveHonor)add('混一色',openHand?2:3);
   const han=yaku.reduce((n,y)=>n+y.han,0);
   const fu=calcFu(form,context,allSets,completedTriplet);
   return {form:form.kind,yaku,yakuman:0,han,fu,base:baseFromHanFu(han,fu)};
@@ -155,18 +163,21 @@ export function evaluateWin(tiles,context){
 /** Expected 13 - 3*melds concealed tiles. Returns winning tile ids (without using hidden knowledge). */
 export function getWaits(tiles,melds=[]){
   if(tiles.length!==13-3*melds.length)return [];
-  const c=tileCounts([...tiles,...melds.flatMap(m=>Array(3).fill(m.tile))]);
+  const c=tileCounts([...tiles,...melds.flatMap(meldTiles)]);
   return IDS.filter((id,i)=>c[i]<WALL_COPIES && getForms([...tiles,id],melds).length>0);
 }
 /** Minimum tiles to replace / draw until a complete 14-tile hand (one more than shanten). */
+const missingMemo=new Map();
 export function missingTiles(tiles,openMeldCount=0){
   const c=tileCounts(tiles),target=4-openMeldCount;
+  const key=openMeldCount+':'+c.join(',');
+  if(missingMemo.has(key))return missingMemo.get(key);
   let dp=Array.from({length:target+1},()=>[Infinity,Infinity]);dp[0][0]=0;
   for(const count of c){
     const next=Array.from({length:target+1},()=>[Infinity,Infinity]);
     for(let n=0;n<=target;n++)for(let p=0;p<=1;p++){
       const prior=dp[n][p];if(!Number.isFinite(prior))continue;
-      for(let sets=0;sets<=Math.min(2,target-n);sets++)for(let pair=0;pair<=1-p;pair++){
+      for(let sets=0;sets<=Math.min(Math.floor(WALL_COPIES/3),target-n);sets++)for(let pair=0;pair<=1-p;pair++){
         const cost=Math.max(0,3*sets+2*pair-count);
         next[n+sets][p+pair]=Math.min(next[n+sets][p+pair],prior+cost);
       }
@@ -180,6 +191,8 @@ export function missingTiles(tiles,openMeldCount=0){
     const distinct=c.filter(v=>v>0).length;
     missing=Math.min(missing,13-distinct+(c.some(v=>v>1)?0:1));
   }
+  if(missingMemo.size>40000)missingMemo.clear();
+  missingMemo.set(key,missing);
   return missing;
 }
 export function getTenpaiDiscards(hand,melds=[]){
