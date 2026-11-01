@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {createWall,getForms,getWaits,missingTiles,evaluateWin,baseFromHanFu,calculatePayments,seatWind,IDS} from '../engine.js';
 const ctx=(overrides={})=>({melds:[],seat:1,dealer:0,winType:'tsumo',winningTile:'m1',...overrides});
 const many=(t,n)=>Array(n).fill(t);
-test('104 tiles, exactly 8 of every one of 13 distinct kinds',()=>{
-  const wall=createWall();assert.equal(wall.length,104);
+test('156 tiles, exactly 12 of every one of 13 distinct kinds',()=>{
+  const wall=createWall();assert.equal(wall.length,156);
   assert.equal(new Set(wall).size,13);
-  for(const t of IDS)assert.equal(wall.filter(x=>x===t).length,8);
+  for(const t of IDS)assert.equal(wall.filter(x=>x===t).length,12);
 });
 test('kokushi',()=>{
   const hand=[...IDS,'m1'];
@@ -66,8 +66,35 @@ test('payments respect dealer/nondealer, tsumo and ron',()=>{
   assert.deepEqual(calculatePayments(8000,'tsumo',0,0).delta,[48000,-16000,-16000,-16000]);
   assert.equal(seatWind(1,1),'east');
 });
-test('with eight copies, two triplets of one yakuhai earn two instances of the yaku',()=>{
+test('with twelve copies, two triplets of one yakuhai earn two instances of the yaku',()=>{
   const tiles=[...many('red',6),...many('m1',3),...many('p1',3),...many('south',2)];
   const score=evaluateWin(tiles,ctx({seat:1,winType:'ron',winningTile:'red'}));
   assert.equal(score.yaku.filter(x=>x.name==='役牌・中').length,2);
+});
+
+test('12 copies permit four same triplets plus a pair of different type',()=>{
+  const hand=[...many('red',12),...many('south',2)];
+  assert.ok(getForms(hand).some(f=>f.kind==='standard' && f.sets.length===4));
+  assert.equal(missingTiles([...many('red',12),'south']),1);
+});
+test('concealed kan keeps hand closed; kan fu and yaku count',()=>{
+  const melds=[{tile:'m1',kind:'kan',open:false,from:1}];
+  const tiles=[...many('m9',3),...many('p1',3),...many('s1',3),...many('red',2)];
+  const score=evaluateWin(tiles,ctx({melds,winningTile:'red'}));
+  assert.ok(score.yaku.some(x=>x.name==='四暗刻'));
+  assert.deepEqual(getWaits(tiles.slice(0,-1),melds),['red']);
+});
+test('rinshan and chankan add one han when not yakuman',()=>{
+  const melds=[{tile:'east',from:0,kind:'pon',open:true}];
+  const tiles=[...many('m1',3),...many('m9',3),...many('p1',3),...many('red',2)];
+  const base=ctx({melds,winningTile:'red'});
+  const tsumo=evaluateWin(tiles,{...base,rinshan:true});
+  const ron=evaluateWin(tiles,{...base,winType:'ron',chankan:true});
+  assert.ok(tsumo.yaku.some(x=>x.name==='嶺上開花'));
+  assert.ok(ron.yaku.some(x=>x.name==='槍槓'));
+});
+test('four kan melds score 四槓子',()=>{
+  const melds=['m1','m9','p1','p9'].map(tile=>({tile,kind:'kan',open:true,from:2}));
+  const score=evaluateWin(['red','red'],ctx({melds,winningTile:'red'}));
+  assert.ok(score.yaku.some(x=>x.name==='四槓子'));
 });
