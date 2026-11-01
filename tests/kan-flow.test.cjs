@@ -38,3 +38,31 @@ test('one kan reveals one more indicator; ura indicators remain hidden without r
   const g=setup();const r=g.eval(`(()=>{const p=state.players[0];p.hand=['m1','m1','m1','m1','m9','m9','m9','p1','p1','p1','s1','s1','red','red'];p.drawIndex=13;state.phase='human-turn';declareKan(0,'ankan','m1');const before=context(0,'tsumo','m1');p.riichi=true;const after=context(0,'tsumo','m1');return {shown:before.doraIndicators.length,hidden:before.uraIndicators.length,riichiHidden:after.uraIndicators.length};})()`);
   assert.equal(r.shown,2);assert.equal(r.hidden,0);assert.equal(r.riichiHidden,2);
 });
+
+test('ankan exposes kan-dora before rinshan whereas daiminkan defers it',()=>{
+  const an=setup();
+  const r1=an.eval(`(()=>{const p=state.players[0];p.hand=['m1','m1','m1','m1','m9','m9','m9','p1','p1','p1','s1','s1','red','red'];p.drawIndex=13;state.phase='human-turn';declareKan(0,'ankan','m1');return {kan:state.kanCount,shown:state.revealedKanDora,pending:state.pendingKanDora,visible:context(0,'tsumo','m1').doraIndicators.length};})()`);
+  assert.equal(r1.kan,1);assert.equal(r1.shown,1);assert.equal(r1.pending,0);assert.equal(r1.visible,2);
+  const dm=setup();
+  const r2=dm.eval(`(()=>{const p=state.players[0];p.hand=['p1','p1','p1','m1','m1','m1','m9','m9','m9','red','red','east','east'];state.players[1].discards=['p1'];executeDaiminkan(0,'p1',1);return {kan:state.kanCount,shown:state.revealedKanDora,pending:state.pendingKanDora,visible:context(0,'tsumo','p1').doraIndicators.length};})()`);
+  assert.equal(r2.kan,1);assert.equal(r2.shown,0);assert.equal(r2.pending,1);assert.equal(r2.visible,1);
+});
+
+test('a completed discard reveals pending daiminkan dora',()=>{
+  const g=setup();
+  const r=g.eval(`(()=>{const p=state.players[0];p.hand=['p1','p1','p1','m1','m1','m1','m9','m9','m9','red','red','east','east'];state.players[1].discards=['p1'];executeDaiminkan(0,'p1',1);const before=context(0,'tsumo','m1').doraIndicators.length;discard(0,p.hand.indexOf('east'));const prior=state.revealedKanDora;for(const pl of state.players.slice(1))pl.riichi=true;offerPonOrAdvance();return {before,prior,after:state.revealedKanDora,pending:state.pendingKanDora,visible:context(0,'ron','m1').doraIndicators.length};})()`);
+  assert.equal(r.before,1);assert.equal(r.prior,0);assert.equal(r.after,1);assert.equal(r.pending,0);assert.equal(r.visible,2);
+});
+
+test('ron on the discard prevents delayed kan-dora from being exposed',()=>{
+  const g=setup();
+  const r=g.eval(`(()=>{const p=state.players[0];p.hand=['p1','p1','p1','m1','m1','m1','m9','m9','m9','red','red','east','east'];state.players[1].discards=['p1'];executeDaiminkan(0,'p1',1);const win={base:2000,han:5,fu:40,yakuman:0,yaku:[],dora:0,uraDora:0};finishWin(1,'ron','east',0,win);return {shown:state.revealedKanDora,pending:state.pendingKanDora,indicators:state.outcome.doraIndicators.length};})()`);
+  assert.equal(r.shown,0);assert.equal(r.pending,1);assert.equal(r.indicators,1);
+});
+
+test('kakan is delayed, a subsequent ankan reveals prior delayed indicator before drawing',()=>{
+  const g=setup();
+  const r=g.eval(`(()=>{const p=state.players[0];p.melds=[{tile:'p1',kind:'pon',open:true,from:1}];p.hand=['p1','m1','m1','m1','m1','m9','m9','m9','red','red','east'];p.drawIndex=p.hand.length-1;state.phase='human-turn';commitKakan(0,'p1');const afterKakan={shown:state.revealedKanDora,pending:state.pendingKanDora};declareKan(0,'ankan','m1');return {afterKakan,shown:state.revealedKanDora,pending:state.pendingKanDora,visible:context(0,'tsumo','m1').doraIndicators.length};})()`);
+  assert.equal(r.afterKakan.shown,0);assert.equal(r.afterKakan.pending,1);
+  assert.equal(r.shown,2);assert.equal(r.pending,0);assert.equal(r.visible,3);
+});

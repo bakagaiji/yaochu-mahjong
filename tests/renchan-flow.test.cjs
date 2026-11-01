@@ -54,3 +54,26 @@ test('actual eight kan abort makes East 4 repeat with extra honba',()=>{
   assert.equal(result.round,4);assert.equal(result.honba,2);
   assert.notEqual(result.phase,'game-end');
 });
+
+test('a negative score on a win stops the match immediately after result display',()=>{
+  const run=setup();
+  const result=run(`(()=>{state.round=1;state.dealer=0;state.honba=0;state.players[1].points=100;state.players[0].points+=49900;const win={base:8000,han:13,fu:0,yakuman:0,yaku:[],dora:0,uraDora:0};finishWin(0,'ron','red',1,win);const phaseBefore=state.phase;const notice=renderOutcome();const loses=state.players[1].points;nextRound();return {phaseBefore,notice,loses,phaseAfter:state.phase,round:state.round,points:state.players.map(p=>p.points),pot:state.riichiPot};})()`);
+  assert.equal(result.phaseBefore,'hand-end');
+  assert.ok(result.loses<0);
+  assert.match(result.notice,/飛び終了：最終結果を見る/);
+  assert.equal(result.phaseAfter,'game-end');assert.equal(result.round,1);
+  assert.equal(result.points.reduce((a,b)=>a+b,0)+result.pot,200000);
+});
+
+test('a negative score from draw settlement also ends the match',()=>{
+  const run=setup();
+  const r=run(`(()=>{state.round=2;state.dealer=1;state.honba=1;state.players[0].points=-100;state.players[1].points=100100;state.phase='hand-end';state.outcome={type:'draw',ready:[false,true,false,false],deltas:[0,0,0,0]};const label=renderOutcome();nextRound();return {phase:state.phase,round:state.round,label};})()`);
+  assert.equal(r.phase,'game-end');assert.equal(r.round,2);
+  assert.match(r.label,/飛び終了/);
+});
+
+test('exactly zero points does not count as a bust',()=>{
+  const run=setup();
+  const r=run(`(()=>{state.round=1;state.dealer=0;state.honba=0;state.players[0].points=0;state.players[1].points=100000;state.phase='hand-end';state.outcome={type:'abort'};nextRound();return {phase:state.phase,round:state.round,honba:state.honba};})()`);
+  assert.notEqual(r.phase,'game-end');assert.equal(r.round,1);assert.equal(r.honba,1);
+});

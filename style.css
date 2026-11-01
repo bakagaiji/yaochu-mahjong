@@ -47,3 +47,6 @@ body{margin:0;min-width:320px;background:radial-gradient(ellipse at top left,#fd
 /* Honba / renchan status remains legible in the compact round chip. */
 .round-chip strong{font-size:clamp(14px,2vw,21px);white-space:nowrap}
 @media(max-width:720px){.round-chip{min-width:118px;padding:9px 10px}}
+
+/* Notice when a score below zero triggers an immediate match end. */
+.tobi-banner{margin:10px auto;color:#9b422f;font-size:13px;font-weight:750;text-align:center}
