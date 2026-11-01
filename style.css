@@ -43,3 +43,7 @@ body{margin:0;min-width:320px;background:radial-gradient(ellipse at top left,#fd
 .result-indicators .tile-face{--tile-w:24px;--tile-h:33px}
 .dora-summary{font-size:12px;font-weight:700;color:#356455;margin:8px 0 0}
 @media(max-width:720px){.dora-panel{margin-top:8px;padding:7px;gap:4px}.dora-panel .tile-face{--tile-w:19px;--tile-h:26px}.indicator-caption{font-size:10px}.result-indicators{padding:7px}.result-indicators .tile-face{--tile-w:22px;--tile-h:30px}}
+
+/* Honba / renchan status remains legible in the compact round chip. */
+.round-chip strong{font-size:clamp(14px,2vw,21px);white-space:nowrap}
+@media(max-width:720px){.round-chip{min-width:118px;padding:9px 10px}}

@@ -1,0 +1,21 @@
+name: Test Mahjong Rules
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Rules and integration tests
+        run: npm test
+      - name: Full CPU match simulations
+        run: node tests/simulation.cjs

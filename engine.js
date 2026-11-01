@@ -79,29 +79,58 @@ function calcFu(form,context,allSets,completedTriplet){
 }
 export function baseFromHanFu(han,fu,yakuman=0){
   if(yakuman)return 8000*yakuman;
-  if(han>=13)return 8000;
+  if(han>=13)return 8000*Math.floor(han/13); // 13-25: yakuman, 26-38: double, 39-51: triple.
   if(han>=11)return 6000;
   if(han>=8)return 4000;
   if(han>=6)return 3000;
   if(han>=5 || (han===4&&fu>=40) || (han===3&&fu>=70))return 2000;
   return Math.min(2000,fu*(2**(han+2)));
 }
+
+/** Display title for both natural yakuman combinations and counted han-based yakuman. */
+export function yakumanName(multiples){
+  if(multiples===1)return '役満';
+  if(multiples===2)return 'ダブル役満';
+  if(multiples===3)return 'トリプル役満';
+  return `${multiples}倍役満`;
+}
+export function scoreName(win){
+  if(win.yakuman)return yakumanName(win.yakuman);
+  if(win.han>=13)return `${win.han>=26?yakumanName(Math.floor(win.han/13)):'数え役満'}${win.han>=26?`（数え${win.han}翻）`:''}`;
+  if(win.han>=11)return '三倍満';
+  if(win.han>=8)return '倍満';
+  if(win.han>=6)return '跳満';
+  if(win.han>=5||win.base===2000)return '満貫';
+  return `${win.han}翻 ${win.fu}符`;
+}
+/** Standard-ish east-only repeat / honba rules for the custom game. */
+export function nextHandState(round,honba,dealer,outcome){
+  if(!outcome)throw new Error('Hand outcome is required');
+  const repeat=outcome.type==='abort'
+    ||(outcome.type==='win'&&outcome.winner===dealer)
+    ||(outcome.type==='draw'&&Boolean(outcome.ready?.[dealer]));
+  const nextHonba=repeat||outcome.type==='draw'?honba+1:0;
+  const finished=!repeat&&round>=4;
+  return {round:repeat||finished?round:round+1,honba:nextHonba,repeat,finished};
+}
+
 const ceil100=n=>Math.ceil(n/100)*100;
-export function calculatePayments(base,winType,winner,dealer,loser=null){
+export function calculatePayments(base,winType,winner,dealer,loser=null,honba=0){
+  if(!Number.isInteger(honba)||honba<0)throw new Error('Invalid honba');
   const delta=[0,0,0,0];
   if(winType==='ron'){
     if(loser===null||loser===winner)throw new Error('Invalid ron loser');
-    const amount=ceil100(base*(winner===dealer?6:4));
+    const amount=ceil100(base*(winner===dealer?6:4))+300*honba;
     delta[winner]+=amount;delta[loser]-=amount;
-    return {delta,description:`ロン ${amount.toLocaleString('ja-JP')}点`,total:amount};
+    return {delta,description:`ロン ${amount.toLocaleString('ja-JP')}点${honba?`（${honba}本場、+ ${(300*honba).toLocaleString('ja-JP')}点）`:''}`,total:amount,honbaBonus:300*honba};
   }
   for(let s=0;s<4;s++){
     if(s===winner)continue;
-    const amount=ceil100(base*(winner===dealer?2:s===dealer?2:1));
+    const amount=ceil100(base*(winner===dealer?2:s===dealer?2:1))+100*honba;
     delta[s]-=amount;delta[winner]+=amount;
   }
-  const costs=winner===dealer?`${ceil100(base*2).toLocaleString('ja-JP')}点オール`:`${ceil100(base).toLocaleString('ja-JP')} / ${ceil100(base*2).toLocaleString('ja-JP')}点`;
-  return {delta,description:`ツモ ${costs}`,total:delta[winner]};
+  const costs=winner===dealer?`${(ceil100(base*2)+100*honba).toLocaleString('ja-JP')}点オール`:`${(ceil100(base)+100*honba).toLocaleString('ja-JP')} / ${(ceil100(base*2)+100*honba).toLocaleString('ja-JP')}点`;
+  return {delta,description:`ツモ ${costs}${honba?`（${honba}本場）`:''}`,total:delta[winner],honbaBonus:300*honba};
 }
 function evaluateForm(form,tiles,context,completedAsPair){
   const {melds,winType,seat,dealer,riichi=false,ippatsu=false,rinshan=false,chankan=false}=context;
