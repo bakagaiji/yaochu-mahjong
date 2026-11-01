@@ -1,0 +1,25 @@
+name: Install game source files
+on:
+  push:
+    paths:
+      - 'data/yaochu-source.tar.xz.b64'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack source and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d data/yaochu-source.tar.xz.b64 | tar -xJf -
+          rm -f data/yaochu-source.tar.xz.b64 .github/workflows/install-game.yml
+          rmdir data 2>/dev/null || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Add playable Yaochu Mahjong and tests'
+          git push
