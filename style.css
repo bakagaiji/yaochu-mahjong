@@ -50,3 +50,32 @@ body{margin:0;min-width:320px;background:radial-gradient(ellipse at top left,#fd
 
 /* Notice when a score below zero triggers an immediate match end. */
 .tobi-banner{margin:10px auto;color:#9b422f;font-size:13px;font-weight:750;text-align:center}
+
+/* Visually distinct pin (round counter) vs sou (bamboo strokes), including on narrow phones.
+   Readable without relying on blue/green hue differences alone. */
+.tile-face.pin,.tile-face.sou{position:relative;gap:0}
+.tile-face.pin{color:#135a81;background:linear-gradient(160deg,#e8f5ff,#fffefa 78%);border-left:2px solid #1476a1;border-bottom-color:#4789ac}
+.tile-face.sou{color:#17613d;background:linear-gradient(160deg,#edf9e7,#fffefa 78%);border-left:2px dashed #268045;border-bottom-color:#51936a}
+.tile-face.pin .tile-num,.tile-face.sou .tile-num{font-size:calc(var(--tile-w)*.57);line-height:1;font-weight:900;letter-spacing:0}
+.tile-face.pin .tile-suit,.tile-face.sou .tile-suit{position:absolute;right:1px;bottom:1px;font-size:clamp(5px,calc(var(--tile-w)*.22),10px);line-height:1;font-weight:900}
+.tile-pattern{width:calc(var(--tile-w)*.47);height:calc(var(--tile-w)*.38);flex:0 0 auto;display:block;position:relative;box-sizing:border-box;margin-top:1px}
+.tile-pattern.pin-pattern{border:clamp(1.5px,calc(var(--tile-w)*.085),3px) solid currentColor;border-radius:50%;background:#b9def2}
+.tile-pattern.pin-pattern::before{content:"";position:absolute;inset:29%;background:currentColor;border-radius:50%}
+.tile-pattern.sou-pattern{background:repeating-linear-gradient(90deg,currentColor 0 19%,transparent 19% 38%);clip-path:polygon(0 0,100% 0,100% 100%,0 100%);transform:rotate(-8deg)}
+.tile-pattern.sou-pattern::after{content:"";position:absolute;left:0;right:0;top:48%;height:2px;background:#fffefa}
+.hand-tile .tile-face.pin,.hand-tile .tile-face.sou{border-left-width:3px}
+@media(max-width:720px){
+  .hand-tile .tile-face.pin .tile-num,.hand-tile .tile-face.sou .tile-num{font-size:calc(var(--tile-w)*.65)}
+  .hand-tile .tile-pattern{width:calc(var(--tile-w)*.53);height:calc(var(--tile-w)*.42)}
+  .hand-tile .tile-face.pin .tile-suit,.hand-tile .tile-face.sou .tile-suit{font-size:max(6px,calc(var(--tile-w)*.25))}
+  .river .tile-pattern,.dora-panel .tile-pattern{width:calc(var(--tile-w)*.50);height:calc(var(--tile-w)*.37)}
+}
+.multi-ron-intro{font-size:12px;color:#647670;margin:8px 0}
+.multi-win-list{display:flex;flex-direction:column;gap:16px;margin-top:10px}
+.multi-win-entry{background:#fff;border:1px solid #d9e5d8;border-radius:11px;padding:13px 10px}
+.multi-win-entry h3{margin:2px 0 8px;font-size:17px;color:#215b4d}
+.multi-win-entry .agari-row{padding:4px 0 8px}
+.multi-win-entry .yaku-list{margin-top:9px}
+.multi-win-entry .result-indicators{margin-bottom:8px}
+.modal.outcome:has(.multi-win-list){max-height:86dvh;overflow-y:auto;overscroll-behavior:contain}
+@media(max-width:720px){.multi-win-entry{padding:10px 4px}.multi-win-entry .big-score{font-size:24px}.multi-win-entry .pay-caption{font-size:14px}}

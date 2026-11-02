@@ -15,7 +15,7 @@ function simulate(){
   if(s.phase==='game-end')return {s,step};
   let expression=null;
   if(s.phase==='human-turn')expression=`{const p=state.players[0];if(p.drawIndex>=0&&makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))humanTsumo();else{const candidates=handOptions(p);if(!candidates.length)throw Error('No human discard');humanDiscard(candidates[0].index);}}`;
-  else if(s.phase==='human-response')expression=`humanRespond(state.pending.kind==='ron'||state.pending.kind==='chankan'?'ron':state.pending.canKan?'kan':'pon')`;
+  else if(s.phase==='human-response')expression=`humanRespond(['ron','chankan','ron-multi','chankan-multi'].includes(state.pending.kind)?'ron':state.pending.canKan?'kan':'pon')`;
   else if(s.phase==='hand-end')expression=`nextRound()`;
   if(expression)vm.runInContext(expression,ctx);
   else {

@@ -48,3 +48,10 @@ test('eight kan abort repeats and increases honba',()=>{
   assert.deepEqual(nextHandState(1,0,0,{type:'abort'}),{round:1,honba:1,repeat:true,finished:false});
   assert.deepEqual(nextHandState(4,3,3,{type:'abort'}),{round:4,honba:4,repeat:true,finished:false});
 });
+
+test('a simultaneous ron involving dealer keeps parent even if another winner is closer',()=>{
+  const outcome={type:'multi-win',winners:[{winner:2},{winner:0}],loser:1};
+  assert.deepEqual(nextHandState(4,2,0,outcome),{round:4,honba:3,repeat:true,finished:false});
+  const onlyChildren={type:'multi-win',winners:[{winner:2},{winner:3}],loser:1};
+  assert.deepEqual(nextHandState(4,2,0,onlyChildren),{round:4,honba:0,repeat:false,finished:true});
+});

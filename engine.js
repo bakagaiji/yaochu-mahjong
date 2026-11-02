@@ -108,6 +108,7 @@ export function nextHandState(round,honba,dealer,outcome){
   if(!outcome)throw new Error('Hand outcome is required');
   const repeat=outcome.type==='abort'
     ||(outcome.type==='win'&&outcome.winner===dealer)
+    ||(outcome.type==='multi-win'&&outcome.winners.some(w=>w.winner===dealer))
     ||(outcome.type==='draw'&&Boolean(outcome.ready?.[dealer]));
   const nextHonba=repeat||outcome.type==='draw'?honba+1:0;
   const finished=!repeat&&round>=4;
