@@ -54,8 +54,8 @@ test('riichi pot goes once to nearest claimant, not to all of them',()=>{
 
 test('dealer among multiple winners repeats even if dealer not nearest',()=>{
   const run=setup();
-  const r=run(`(()=>{state.dealer=3;state.round=2;state.players.forEach((p,i)=>{p.hand=i===0?[]:${JSON.stringify(waitHand())};p.melds=[];p.discards=[];p.riichi=false;p.tempFuriten=false;p.riichiPassed=false;});state.players[0].discards=['m1'];state.lastDiscard={seat:0,tile:'m1'};state.phase='resolving';resolveDiscard();const current=state.outcome.type;nextRound();return {current,round:state.round,honba:state.honba,dealer:state.dealer};})()`);
-  assert.equal(r.current,'multi-win');assert.equal(r.round,2);assert.equal(r.honba,1);assert.equal(r.dealer,1);
+  const r=run(`(()=>{state.dealer=3;state.round=4;state.players.forEach((p,i)=>{p.points=i===0?200000:0;p.hand=i===0?[]:${JSON.stringify(waitHand())};p.melds=[];p.discards=[];p.riichi=false;p.tempFuriten=false;p.riichiPassed=false;});state.players[0].discards=['m1'];state.lastDiscard={seat:0,tile:'m1'};state.phase='resolving';resolveDiscard();const current=state.outcome.type;nextRound();return {current,round:state.round,honba:state.honba,dealer:state.dealer};})()`);
+  assert.equal(r.current,'multi-win');assert.equal(r.round,4);assert.equal(r.honba,1);assert.equal(r.dealer,3);
 });
 
 test('multiple chankan claims are recognized before added kan is committed',()=>{
