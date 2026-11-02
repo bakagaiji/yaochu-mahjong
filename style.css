@@ -51,25 +51,27 @@ body{margin:0;min-width:320px;background:radial-gradient(ellipse at top left,#fd
 /* Notice when a score below zero triggers an immediate match end. */
 .tobi-banner{margin:10px auto;color:#9b422f;font-size:13px;font-weight:750;text-align:center}
 
-/* Visually distinct pin (round counter) vs sou (bamboo strokes), including on narrow phones.
-   Readable without relying on blue/green hue differences alone. */
-.tile-face.pin,.tile-face.sou{position:relative;gap:0}
-.tile-face.pin{color:#135a81;background:linear-gradient(160deg,#e8f5ff,#fffefa 78%);border-left:2px solid #1476a1;border-bottom-color:#4789ac}
-.tile-face.sou{color:#17613d;background:linear-gradient(160deg,#edf9e7,#fffefa 78%);border-left:2px dashed #268045;border-bottom-color:#51936a}
-.tile-face.pin .tile-num,.tile-face.sou .tile-num{font-size:calc(var(--tile-w)*.57);line-height:1;font-weight:900;letter-spacing:0}
-.tile-face.pin .tile-suit,.tile-face.sou .tile-suit{position:absolute;right:1px;bottom:1px;font-size:clamp(5px,calc(var(--tile-w)*.22),10px);line-height:1;font-weight:900}
-.tile-pattern{width:calc(var(--tile-w)*.47);height:calc(var(--tile-w)*.38);flex:0 0 auto;display:block;position:relative;box-sizing:border-box;margin-top:1px}
-.tile-pattern.pin-pattern{border:clamp(1.5px,calc(var(--tile-w)*.085),3px) solid currentColor;border-radius:50%;background:#b9def2}
-.tile-pattern.pin-pattern::before{content:"";position:absolute;inset:29%;background:currentColor;border-radius:50%}
-.tile-pattern.sou-pattern{background:repeating-linear-gradient(90deg,currentColor 0 19%,transparent 19% 38%);clip-path:polygon(0 0,100% 0,100% 100%,0 100%);transform:rotate(-8deg)}
-.tile-pattern.sou-pattern::after{content:"";position:absolute;left:0;right:0;top:48%;height:2px;background:#fffefa}
-.hand-tile .tile-face.pin,.hand-tile .tile-face.sou{border-left-width:3px}
+
+/* Compact suit markers: simple numeral, small edge label, no center pattern. */
+.tile-face.pin,.tile-face.sou{position:relative;overflow:hidden}
+.tile-face.pin{color:#236b85;background:linear-gradient(160deg,#f6fbff,#f2ecde 78%);border-left:3px solid #63a9c7}
+.tile-face.sou{color:#267f54;background:linear-gradient(160deg,#f3fbf4,#f2ecde 78%);border-left:3px dashed #63a37c}
+.tile-face.pin .tile-num,.tile-face.sou .tile-num{font-size:calc(var(--tile-w)*.56);line-height:1.02;letter-spacing:-.04em;font-weight:900}
+.tile-face.pin .tile-suit-small,.tile-face.sou .tile-suit-small{position:absolute;right:2px;bottom:1px;font-size:calc(var(--tile-w)*.22);line-height:1;font-weight:800}
+.tile-badge{position:absolute;left:2px;top:2px;line-height:1;padding:1px 2px;border-radius:3px;font-size:calc(var(--tile-w)*.18);font-weight:900;letter-spacing:0;background:#ffffffdd;border:1px solid currentColor}
+.tile-face.pin .tile-badge{background:#eef8ff}
+.tile-face.sou .tile-badge{background:#eef9f1}
+.hand-tile .tile-face.pin .tile-num,.hand-tile .tile-face.sou .tile-num{font-size:calc(var(--tile-w)*.60)}
+/* Only the large hand tiles need two suit labels. On smaller tiles, use the bold digit, lower glyph and edge color. */
+.river .tile-badge,.opp-melds .tile-badge,.human-melds .tile-badge,.dora-panel .tile-badge,.result-indicators .tile-badge,.agari-row .tile-badge{display:none}
 @media(max-width:720px){
-  .hand-tile .tile-face.pin .tile-num,.hand-tile .tile-face.sou .tile-num{font-size:calc(var(--tile-w)*.65)}
-  .hand-tile .tile-pattern{width:calc(var(--tile-w)*.53);height:calc(var(--tile-w)*.42)}
-  .hand-tile .tile-face.pin .tile-suit,.hand-tile .tile-face.sou .tile-suit{font-size:max(6px,calc(var(--tile-w)*.25))}
-  .river .tile-pattern,.dora-panel .tile-pattern{width:calc(var(--tile-w)*.50);height:calc(var(--tile-w)*.37)}
+  .hand-tile .tile-badge{font-size:max(6px,calc(var(--tile-w)*.20));top:1px;left:1px;padding:0 1px}
+  .hand-tile .tile-face.pin .tile-num,.hand-tile .tile-face.sou .tile-num{font-size:calc(var(--tile-w)*.62)}
+  .hand-tile .tile-suit-small{right:1px;bottom:1px;font-size:max(6px,calc(var(--tile-w)*.21))}
+  .river .tile-suit-small,.dora-panel .tile-suit-small{font-size:max(5px,calc(var(--tile-w)*.21))}
 }
+@media(max-width:370px){.hand-tile .tile-badge{display:none}}
+
 .multi-ron-intro{font-size:12px;color:#647670;margin:8px 0}
 .multi-win-list{display:flex;flex-direction:column;gap:16px;margin-top:10px}
 .multi-win-entry{background:#fff;border:1px solid #d9e5d8;border-radius:11px;padding:13px 10px}

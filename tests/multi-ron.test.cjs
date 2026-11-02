@@ -65,9 +65,12 @@ test('multiple chankan claims are recognized before added kan is committed',()=>
   assert.equal(r.outcome,'multi-win');assert.deepEqual([...r.winners],[2,0]);assert.equal(r.kind,'pon');
 });
 
-test('pin and sou suits have distinct non-color visual marks',()=>{
+test('pin and sou render compact digits, corner labels, and no central ornaments',()=>{
   const run=setup();
-  const r=run(`({pin:tileMarkup('p1'),sou:tileMarkup('s9')})`);
-  assert.match(r.pin,/pin-pattern/);assert.match(r.sou,/sou-pattern/);
+  const r=run(`({pin:tileMarkup('p1'),sou:tileMarkup('s9'),man:tileMarkup('m1')})`);
+  assert.match(r.pin,/tile-badge">筒/);assert.match(r.sou,/tile-badge">索/);
+  assert.match(r.pin,/tile-suit tile-suit-small/);assert.match(r.sou,/tile-suit tile-suit-small/);
   assert.match(r.pin,/>1</);assert.match(r.sou,/>9</);
+  assert.doesNotMatch(r.pin,/tile-pattern/);assert.doesNotMatch(r.sou,/tile-pattern/);
+  assert.doesNotMatch(r.man,/tile-badge/);
 });

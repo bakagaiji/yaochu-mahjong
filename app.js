@@ -418,9 +418,17 @@ function nextRound(){
 }
 function tileMarkup(id,additional='',kind='visible'){
   const t=TILE_INFO[id];if(!t)return '';
-  const number=t.id==='white'?'<span class="tile-white-mark">白</span>':t.digit
-    ?`<span class="tile-num">${t.digit}</span><span class="tile-pattern ${t.group}-pattern" aria-hidden="true"></span><span class="tile-suit">${t.glyph}</span>`
-    :`<span class="tile-kanji">${t.glyph}</span>`;
+  let number='';
+  if(t.id==='white'){
+    number='<span class="tile-white-mark">白</span>';
+  }else if(t.digit){
+    const badge=t.group==='pin'?'<span class="tile-badge">筒</span>':
+      t.group==='sou'?'<span class="tile-badge">索</span>':'';
+    const suitClass=t.group==='man'?'tile-suit':'tile-suit tile-suit-small';
+    number=`${badge}<span class="tile-num">${t.digit}</span><span class="${suitClass}">${t.glyph}</span>`;
+  }else{
+    number=`<span class="tile-kanji">${t.glyph}</span>`;
+  }
   return `<span class="tile-face ${t.group} ${t.id} ${additional}" title="${t.name}">${number}</span>`;
 }
 function meldMarkup(m){
