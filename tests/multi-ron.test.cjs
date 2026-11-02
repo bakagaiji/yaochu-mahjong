@@ -70,7 +70,10 @@ test('pin and sou are numeral and lower suit glyph only, without corner labels o
   const r=run(`({pin:tileMarkup('p1'),sou:tileMarkup('s9'),man:tileMarkup('m1')})`);
   assert.match(r.pin,/class="tile-face pin/);
   assert.match(r.sou,/class="tile-face sou/);
-  assert.match(r.pin,/tile-suit tile-suit-small/);assert.match(r.sou,/tile-suit tile-suit-small/);
+  for(const tile of [r.pin,r.sou,r.man]){
+    assert.match(tile,/<span class="tile-num">[19]<\/span><span class="tile-suit">/);
+    assert.doesNotMatch(tile,/tile-suit-small/);
+  }
   assert.match(r.pin,/>1</);assert.match(r.sou,/>9</);
   for(const tile of [r.pin,r.sou,r.man]){
     assert.doesNotMatch(tile,/tile-badge|tile-pattern/);

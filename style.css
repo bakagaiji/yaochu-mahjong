@@ -52,18 +52,15 @@ body{margin:0;min-width:320px;background:radial-gradient(ellipse at top left,#fd
 .tobi-banner{margin:10px auto;color:#9b422f;font-size:13px;font-weight:750;text-align:center}
 
 
-/* Compact number tiles: numeral and bottom suit mark, blue solid / green dashed edge. */
+/* Number, suit glyph size and vertical alignment are shared across all numbered suits. */
 .tile-face.pin,.tile-face.sou{position:relative;overflow:hidden}
 .tile-face.pin{color:#236b85;background:linear-gradient(160deg,#f6fbff,#f2ecde 78%);border-left:3px solid #63a9c7}
 .tile-face.sou{color:#267f54;background:linear-gradient(160deg,#f3fbf4,#f2ecde 78%);border-left:3px dashed #63a37c}
 .tile-face.pin .tile-num,.tile-face.sou .tile-num{font-size:calc(var(--tile-w)*.56);line-height:1.02;letter-spacing:-.04em;font-weight:900}
-.tile-face.pin .tile-suit-small,.tile-face.sou .tile-suit-small{position:absolute;right:2px;bottom:1px;font-size:calc(var(--tile-w)*.22);line-height:1;font-weight:800}
 .hand-tile .tile-face.pin .tile-num,.hand-tile .tile-face.sou .tile-num{font-size:calc(var(--tile-w)*.60)}
 
 @media(max-width:720px){
   .hand-tile .tile-face.pin .tile-num,.hand-tile .tile-face.sou .tile-num{font-size:calc(var(--tile-w)*.62)}
-  .hand-tile .tile-suit-small{right:1px;bottom:1px;font-size:max(6px,calc(var(--tile-w)*.21))}
-  .river .tile-suit-small,.dora-panel .tile-suit-small{font-size:max(5px,calc(var(--tile-w)*.21))}
 }
 
 .multi-ron-intro{font-size:12px;color:#647670;margin:8px 0}

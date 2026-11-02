@@ -422,8 +422,8 @@ function tileMarkup(id,additional='',kind='visible'){
   if(t.id==='white'){
     number='<span class="tile-white-mark">白</span>';
   }else if(t.digit){
-    const suitClass=t.group==='man'?'tile-suit':'tile-suit tile-suit-small';
-    number=`<span class="tile-num">${t.digit}</span><span class="${suitClass}">${t.glyph}</span>`;
+    // All numeral suits share the same font size and centered two-line layout.
+    number=`<span class="tile-num">${t.digit}</span><span class="tile-suit">${t.glyph}</span>`;
   }else{
     number=`<span class="tile-kanji">${t.glyph}</span>`;
   }
