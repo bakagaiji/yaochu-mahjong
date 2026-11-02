@@ -1,0 +1,37 @@
+name: Update v1.0.0 public release wording
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rename-v1.0.0-release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  edit:
+    if: github.repository == 'bakagaiji/yaochu-mahjong'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove promotional wording from published release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view v1.0.0 --repo "$GH_REPO" --json body --jq .body > "$RUNNER_TEMP/release-notes.md"
+          python3 - "$RUNNER_TEMP/release-notes.md" <<'PY'
+          import pathlib,sys
+          path=pathlib.Path(sys.argv[1])
+          content=path.read_text()
+          content=content.replace('么九麻雀 v1.0.0 — 決定版','么九麻雀 v1.0.0')
+          content=content.replace('決定版となったコミット','v1.0.0公開時点のコミット')
+          assert '決定版' not in content
+          path.write_text(content)
+          PY
+          gh release edit v1.0.0 --repo "$GH_REPO" --title "么九麻雀 v1.0.0" --notes-file "$RUNNER_TEMP/release-notes.md"
+          gh release view v1.0.0 --repo "$GH_REPO" --json name,body,tagName --jq '[.name, .tagName, .body] | join("\\n")' > "$RUNNER_TEMP/verified-release.txt"
+          if grep -q '決定版' "$RUNNER_TEMP/verified-release.txt"; then
+            echo "Undesired wording remains in the public release."
+            exit 1
+          fi
+          gh release view v1.0.0 --repo "$GH_REPO" --json name,tagName,url
