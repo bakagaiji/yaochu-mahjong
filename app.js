@@ -5,6 +5,16 @@ const names=['あなた','CPU・青龍','CPU・白虎','CPU・朱雀'];
 const windText={east:'東',south:'南',west:'西',north:'北'};
 const storeKey='yaochu-mahjong-v5';
 const legacyStoreKey='yaochu-mahjong-v4';
+const playOptionsKey='yaochu-mahjong-play-options-v1';
+// Independent from match saves, so both switches survive a new match or refresh.
+function loadPlayOptions(){
+  try{const value=JSON.parse(localStorage.getItem(playOptionsKey));
+    return {noCalls:value?.noCalls===true,autoWin:value?.autoWin===true};
+  }catch{return {noCalls:false,autoWin:false};}
+}
+let playOptions=loadPlayOptions();
+function savePlayOptions(){try{localStorage.setItem(playOptionsKey,JSON.stringify(playOptions));}catch{}}
+
 let state=null;
 let timer=null;
 let helpOpen=false;
@@ -70,6 +80,7 @@ function startTurn(){
   if(state.turn===0){
     state.phase='human-turn';
     const win=makeWinCheck(0,tile,'tsumo');
+    if(win&&playOptions.autoWin){finishWin(0,'tsumo',tile,null,win);return;}
     announce(win?'ツモでアガれます！ 「ツモ」を押すか、牌を捨ててください。':'あなたの手番です。牌を選んで捨ててください。');
     update();
   }else{
@@ -221,6 +232,7 @@ function resolveDiscard(){
   const candidates=ronCandidates(disc,tile);
   if(!candidates.length){offerPonOrAdvance();return;}
   if(candidates.some(c=>c.winner===0)){
+    if(playOptions.autoWin){finishRonCandidates(candidates,disc,tile);return;}
     state.phase='human-response';state.pending={kind:'ron-multi',tile,disc,candidates};
     announce(candidates.length>1?`ダブロン・トリロンのチャンス！ ${candidates.length}人がロンできます。`:'ロンできます。アガるか見送るかを選択してください。');
     update();return;
@@ -232,7 +244,7 @@ function offerPonOrAdvance(){
   revealPendingKanDora(); // Nobody won on the discard: reveal delayed daiminkan/kakan dora.
   const {seat:disc,tile}=state.lastDiscard;
   const p=state.players[0];
-  if(disc!==0 && !p.riichi && p.melds.length<4 && p.hand.filter(t=>t===tile).length>=2){
+  if(disc!==0 && !playOptions.noCalls && !p.riichi && p.melds.length<4 && p.hand.filter(t=>t===tile).length>=2){
     state.phase='human-response';state.pending={kind:'call',tile,disc,canKan:p.hand.filter(t=>t===tile).length>=3&&canKan()};
     announce(`${TILE_INFO[tile].name}を鳴けます。`);update();return;
   }
@@ -315,6 +327,7 @@ function declareKan(seat,type,tile){
     const candidates=ronCandidates(seat,tile,{chankan:true});
     if(candidates.length){
       if(candidates.some(c=>c.winner===0)){
+        if(playOptions.autoWin){finishRonCandidates(candidates,seat,tile);return;}
         state.phase='human-response';state.pending={kind:'chankan-multi',tile,disc:seat,candidates};
         announce(candidates.length>1?'槍槓で複数人がロンできます！':'槍槓でロンできます。');update();return;
       }
@@ -366,7 +379,9 @@ function finishKan(seat,label){
   state.rinshanWin=true;p.tempFuriten=false;
   const win=makeWinCheck(seat,tile,'tsumo');
   if(seat===0){
-    state.phase='human-turn';announce(win?'嶺上開花でツモできます！':'嶺上牌を引きました。カンか打牌を選んでください。');update();
+    state.phase='human-turn';
+    if(win&&playOptions.autoWin){finishWin(0,'tsumo',tile,null,win);return;}
+    announce(win?'嶺上開花でツモできます！':'嶺上牌を引きました。カンか打牌を選んでください。');update();
   }else{
     state.phase='cpu-turn';update();schedule(cpuTurn,610);
   }
@@ -498,7 +513,12 @@ function renderHand(){
     else if(!waitView)waitView='<div class="wait-text">現在はテンパイしていません。</div>';
   }
   return `<div class="hand-top"><div><span class="section-kicker">YOUR HAND</span><h2>あなたの手牌 <small>${windText[seatWind(0,state.dealer)]}家</small></h2></div><span class="hand-detail">${p.hand.length+3*p.melds.length}枚 ${p.riichi?'・リーチ中':''}</span></div>
-  <div class="hand-area" aria-label="あなたの手牌">${buttons}</div>${showMelds}<div class="control-row">${action}</div>${waitView}`;
+  <div class="hand-area" aria-label="あなたの手牌">${buttons}</div>${showMelds}<div class="control-row">${action}</div>
+  <div class="assist-controls" role="group" aria-label="操作補助">
+    <span class="assist-caption">操作補助</span>
+    <button type="button" class="assist-toggle ${playOptions.noCalls?'is-on':''}" data-action="toggle-no-calls" aria-pressed="${playOptions.noCalls}">鳴き無し <b>${playOptions.noCalls?'ON':'OFF'}</b></button>
+    <button type="button" class="assist-toggle ${playOptions.autoWin?'is-on':''}" data-action="toggle-auto-win" aria-pressed="${playOptions.autoWin}">自動アガリ <b>${playOptions.autoWin?'ON':'OFF'}</b></button>
+  </div>${waitView}`;
 }
 function renderOutcome(){
   if(!['hand-end','game-end'].includes(state.phase))return '';
@@ -535,6 +555,28 @@ function render(){
   $('#logs').innerHTML=state.logs.slice(0,5).map((s,i)=>`<div class="log-entry ${i===0?'latest':''}">${s}</div>`).join('');
   $('#overlays').innerHTML=(helpOpen?renderHelp():'')+(!helpOpen?renderOutcome():'');
 }
+// Toggle match-operation assistance without modifying the scoring rules.
+function togglePlayOption(key){
+  if(key!=='noCalls'&&key!=='autoWin')return;
+  playOptions[key]=!playOptions[key];
+  savePlayOptions();
+  if(!state)return;
+  if(key==='noCalls'&&playOptions.noCalls&&state.phase==='human-response'&&state.pending?.kind==='call'){
+    humanRespond(false);return;
+  }
+  if(key==='autoWin'&&playOptions.autoWin){
+    if(state.phase==='human-response'&&['ron','chankan','ron-multi','chankan-multi'].includes(state.pending?.kind)){
+      humanRespond(true);return;
+    }
+    if(state.phase==='human-turn'){
+      const p=state.players[0];
+      if(p.drawIndex>=0&&makeWinCheck(0,p.hand[p.drawIndex],'tsumo')){
+        humanTsumo();return;
+      }
+    }
+  }
+  render();
+}
 document.addEventListener('click',event=>{
   const kan=event.target.closest('[data-kan-type]');if(kan){humanKan(kan.dataset.kanType,kan.dataset.kanTile);return;}
   const tile=event.target.closest('[data-discard]');if(tile){humanDiscard(Number(tile.dataset.discard));return;}
@@ -543,6 +585,8 @@ document.addEventListener('click',event=>{
   if(action==='tsumo')humanTsumo();
   else if(action==='riichi')humanRiichi();
   else if(action==='waits'){showWaits=!showWaits;update();}
+  else if(action==='toggle-no-calls')togglePlayOption('noCalls');
+  else if(action==='toggle-auto-win')togglePlayOption('autoWin');
   else if(action==='accept')humanRespond(true);
   else if(action==='decline')humanRespond(false);
   else if(action==='call-pon')humanRespond('pon');
@@ -557,8 +601,16 @@ document.addEventListener('click',event=>{
 state=load();
 if(!state){newGame();}
 else{
-  render();
-  if(state.phase==='cpu-turn')schedule(cpuTurn,550);
-  else if(state.phase==='turn-start')schedule(startTurn,550);
-  else if(state.phase==='resolving')schedule(resolveDiscard,550);
+  // A browser refresh must not interrupt already enabled automatic decisions.
+  const kind=state.pending?.kind;
+  const p=state.players[0];
+  if(playOptions.autoWin&&state.phase==='human-response'&&['ron','chankan','ron-multi','chankan-multi'].includes(kind))humanRespond(true);
+  else if(playOptions.noCalls&&state.phase==='human-response'&&kind==='call')humanRespond(false);
+  else if(playOptions.autoWin&&state.phase==='human-turn'&&p.drawIndex>=0&&makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))humanTsumo();
+  else{
+    render();
+    if(state.phase==='cpu-turn')schedule(cpuTurn,550);
+    else if(state.phase==='turn-start')schedule(startTurn,550);
+    else if(state.phase==='resolving')schedule(resolveDiscard,550);
+  }
 }
