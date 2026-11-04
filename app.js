@@ -37,6 +37,9 @@ function load(){
 function update(){render();save();}
 function cancelTimer(){if(timer){clearTimeout(timer);timer=null;}}
 function schedule(fn,ms=550){cancelTimer();timer=setTimeout(()=>{timer=null;fn();},ms);}
+// Only animation/turn pacing is scaled. All CPU move selection and scoring stay unchanged.
+const CPU_SPEED_FACTOR=1.75;
+function cpuPace(ms){return Math.round(ms/CPU_SPEED_FACTOR);}
 function newGame(){
   cancelTimer();busy=false;showWaits=false;
   state={version:5,round:1,honba:0,dealer:0,riichiPot:0,kanCount:0,revealedKanDora:0,pendingKanDora:0,rinshan:[],doraIndicators:[],uraIndicators:[],rinshanWin:false,players:names.map(name=>({name,points:50000,hand:[],melds:[],discards:[],riichi:false,ippatsu:false,justRiichi:false,riichiPassed:false,tempFuriten:false,forbidden:null,drawIndex:-1})),wall:[],turn:0,phase:'init',notice:'',logs:[],lastDiscard:null,pending:null,riichiSelecting:false,firstDiscard:[true,true,true,true],handEnded:false};
@@ -59,7 +62,7 @@ function startRound(){
   state.phase='turn-start';state.pending=null;state.lastDiscard=null;state.riichiSelecting=false;
   announce(`東${state.round}局 ${state.honba}本場。親は${names[state.dealer]}。`);
   update();
-  schedule(startTurn,700);
+  schedule(startTurn,state.turn===0?700:cpuPace(700));
 }
 function context(seat,winType,winningTile){
   const p=state.players[seat];
@@ -86,7 +89,7 @@ function startTurn(){
   }else{
     state.phase='cpu-turn';
     announce(`${p.name}の手番です。`);update();
-    schedule(cpuTurn,650);
+    schedule(cpuTurn,cpuPace(650));
   }
 }
 function handOptions(p){const info=[];
@@ -178,7 +181,7 @@ function discard(seat,index){
   // A late-flip kan-dora is not exposed until this discard survives ron.
   state.lastDiscard={seat,tile};state.phase='resolving';
   announce(`${p.name}は${TILE_INFO[tile].name}を捨てました。`);update();
-  schedule(resolveDiscard,seat===0?420:560);
+  schedule(resolveDiscard,seat===0?420:cpuPace(560));
 }
 function canRon(seat,discarder,tile){
   const p=state.players[seat];
@@ -256,7 +259,7 @@ function cpuPonOrAdvance(){
     if(seat!==0 && shouldCpuDaiminkan(seat,tile)){executeDaiminkan(seat,tile,disc);return;}
     if(seat!==0 && shouldCpuPon(seat,tile)){executePon(seat,tile,disc);return;}
   }
-  state.pending=null;state.turn=(disc+1)%4;state.phase='turn-start';update();schedule(startTurn,430);
+  state.pending=null;state.turn=(disc+1)%4;state.phase='turn-start';update();schedule(startTurn,state.turn===0?430:cpuPace(430));
 }
 function humanRespond(accept){
   if(!state||state.phase!=='human-response'||!state.pending)return;
@@ -297,7 +300,7 @@ function executePon(seat,tile,disc){
   state.turn=seat;state.pending=null;
   announce(`${p.name}、ポン！`);
   if(seat===0){state.phase='human-turn';update();}
-  else{state.phase='cpu-turn';update();schedule(cpuTurn,570);}
+  else{state.phase='cpu-turn';update();schedule(cpuTurn,cpuPace(570));}
 }
 // One fixed 8-tile supplementary stack supports at most 7 successful kans.
 function canKan(){return state.rinshan.length>0 && state.kanCount<ABORTIVE_KANS;}
@@ -383,7 +386,7 @@ function finishKan(seat,label){
     if(win&&playOptions.autoWin){finishWin(0,'tsumo',tile,null,win);return;}
     announce(win?'嶺上開花でツモできます！':'嶺上牌を引きました。カンか打牌を選んでください。');update();
   }else{
-    state.phase='cpu-turn';update();schedule(cpuTurn,610);
+    state.phase='cpu-turn';update();schedule(cpuTurn,cpuPace(610));
   }
 }
 function finishAbort(){
@@ -609,8 +612,8 @@ else{
   else if(playOptions.autoWin&&state.phase==='human-turn'&&p.drawIndex>=0&&makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))humanTsumo();
   else{
     render();
-    if(state.phase==='cpu-turn')schedule(cpuTurn,550);
-    else if(state.phase==='turn-start')schedule(startTurn,550);
-    else if(state.phase==='resolving')schedule(resolveDiscard,550);
+    if(state.phase==='cpu-turn')schedule(cpuTurn,cpuPace(550));
+    else if(state.phase==='turn-start')schedule(startTurn,state.turn===0?550:cpuPace(550));
+    else if(state.phase==='resolving')schedule(resolveDiscard,state.lastDiscard?.seat===0?550:cpuPace(550));
   }
 }

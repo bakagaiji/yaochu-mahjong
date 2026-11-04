@@ -160,3 +160,14 @@ test('enabling auto-win during an existing ron prompt takes the win immediately'
   assert.equal(x.type,'win');
   assert.equal(x.winner,0);
 });
+
+// Pace is changed independently of discard choice and scoring decisions.
+test('CPU animation delays are 1.75x faster, while human prompts retain their timing',()=>{
+  const {run}=setup();
+  const actual=run('({factor:CPU_SPEED_FACTOR,delay650:cpuPace(650),delay560:cpuPace(560),delay430:cpuPace(430),delay610:cpuPace(610)})');
+  assert.equal(actual.factor,1.75);
+  assert.equal(actual.delay650,371);
+  assert.equal(actual.delay560,320);
+  assert.equal(actual.delay430,246);
+  assert.equal(actual.delay610,349);
+});
