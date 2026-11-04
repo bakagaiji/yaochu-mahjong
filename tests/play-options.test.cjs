@@ -29,7 +29,8 @@ test('both controls expose three distinct modes, default OFF, and persistent mod
   assert.match(html,/data-play-option="noCalls" data-play-mode="off" aria-pressed="true"/);
   assert.match(html,/data-play-option="autoWin" data-play-mode="off" aria-pressed="true"/);
   assert.match(html,/data-play-option="autoDiscard" data-play-mode="off" aria-pressed="true"/);
-  assert.match(html,/data-action="discard-drawn"/);
+  run("state.phase='human-turn';state.players[0].drawIndex=12");
+  assert.match(run('renderHand()'),/data-action="discard-drawn"/);
   run("setPlayOption('noCalls','always');setPlayOption('autoWin','always')");
   html=run('renderHand()');
   assert.match(html,/data-play-option="noCalls" data-play-mode="always" aria-pressed="true"/);
@@ -238,7 +239,7 @@ test('automatic tsumogiri uses the existing discard rules and pauses on a winnin
   const discarded=run(`(()=>{
     playOptions.autoDiscard='hand';
     const p=state.players[0];
-    p.hand=['m1','m9','p1','p9','s1','s9','east','south','west','north','white','green','red','p1'];
+    p.hand=[...Array(12).fill('green'),'east','p1'];
     p.drawIndex=13;p.discards=[];state.phase='human-turn';state.riichiSelecting=false;
     autoTsumogiri();
     return {phase:state.phase,discarded:p.discards.at(-1),remaining:p.hand.length};
