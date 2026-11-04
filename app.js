@@ -6,14 +6,27 @@ const windText={east:'東',south:'南',west:'西',north:'北'};
 const storeKey='yaochu-mahjong-v5';
 const legacyStoreKey='yaochu-mahjong-v4';
 const playOptionsKey='yaochu-mahjong-play-options-v1';
-// Independent from match saves, so both switches survive a new match or refresh.
+// 'hand' applies only to the current hand; 'always' stays active across hands.
+// Read old booleans as 'always' to preserve the user's previously enabled settings.
+function optionMode(value){
+  return value==='hand'||value==='always'?value:value===true?'always':'off';
+}
 function loadPlayOptions(){
-  try{const value=JSON.parse(localStorage.getItem(playOptionsKey));
-    return {noCalls:value?.noCalls===true,autoWin:value?.autoWin===true};
-  }catch{return {noCalls:false,autoWin:false};}
+  try{
+    const value=JSON.parse(localStorage.getItem(playOptionsKey));
+    return {noCalls:optionMode(value?.noCalls),autoWin:optionMode(value?.autoWin)};
+  }catch{return {noCalls:'off',autoWin:'off'};}
 }
 let playOptions=loadPlayOptions();
 function savePlayOptions(){try{localStorage.setItem(playOptionsKey,JSON.stringify(playOptions));}catch{}}
+function isPlayOptionEnabled(key){return playOptions[key]!=='off';}
+function resetHandPlayOptions(){
+  let changed=false;
+  for(const key of ['noCalls','autoWin']){
+    if(playOptions[key]==='hand'){playOptions[key]='off';changed=true;}
+  }
+  if(changed)savePlayOptions();
+}
 
 let state=null;
 let timer=null;
@@ -46,6 +59,7 @@ function newGame(){
   startRound();
 }
 function startRound(){
+  resetHandPlayOptions();
   state.wall=createWall();
   state.rinshan=state.wall.splice(0,RINSHAN_TILES);
   // Each pair contains one visible indicator and one concealed ura indicator.
@@ -83,7 +97,7 @@ function startTurn(){
   if(state.turn===0){
     state.phase='human-turn';
     const win=makeWinCheck(0,tile,'tsumo');
-    if(win&&playOptions.autoWin){finishWin(0,'tsumo',tile,null,win);return;}
+    if(win&&isPlayOptionEnabled('autoWin')){finishWin(0,'tsumo',tile,null,win);return;}
     announce(win?'ツモでアガれます！ 「ツモ」を押すか、牌を捨ててください。':'あなたの手番です。牌を選んで捨ててください。');
     update();
   }else{
@@ -235,7 +249,7 @@ function resolveDiscard(){
   const candidates=ronCandidates(disc,tile);
   if(!candidates.length){offerPonOrAdvance();return;}
   if(candidates.some(c=>c.winner===0)){
-    if(playOptions.autoWin){finishRonCandidates(candidates,disc,tile);return;}
+    if(isPlayOptionEnabled('autoWin')){finishRonCandidates(candidates,disc,tile);return;}
     state.phase='human-response';state.pending={kind:'ron-multi',tile,disc,candidates};
     announce(candidates.length>1?`ダブロン・トリロンのチャンス！ ${candidates.length}人がロンできます。`:'ロンできます。アガるか見送るかを選択してください。');
     update();return;
@@ -247,7 +261,7 @@ function offerPonOrAdvance(){
   revealPendingKanDora(); // Nobody won on the discard: reveal delayed daiminkan/kakan dora.
   const {seat:disc,tile}=state.lastDiscard;
   const p=state.players[0];
-  if(disc!==0 && !playOptions.noCalls && !p.riichi && p.melds.length<4 && p.hand.filter(t=>t===tile).length>=2){
+  if(disc!==0 && !isPlayOptionEnabled('noCalls') && !p.riichi && p.melds.length<4 && p.hand.filter(t=>t===tile).length>=2){
     state.phase='human-response';state.pending={kind:'call',tile,disc,canKan:p.hand.filter(t=>t===tile).length>=3&&canKan()};
     announce(`${TILE_INFO[tile].name}を鳴けます。`);update();return;
   }
@@ -330,7 +344,7 @@ function declareKan(seat,type,tile){
     const candidates=ronCandidates(seat,tile,{chankan:true});
     if(candidates.length){
       if(candidates.some(c=>c.winner===0)){
-        if(playOptions.autoWin){finishRonCandidates(candidates,seat,tile);return;}
+        if(isPlayOptionEnabled('autoWin')){finishRonCandidates(candidates,seat,tile);return;}
         state.phase='human-response';state.pending={kind:'chankan-multi',tile,disc:seat,candidates};
         announce(candidates.length>1?'槍槓で複数人がロンできます！':'槍槓でロンできます。');update();return;
       }
@@ -383,7 +397,7 @@ function finishKan(seat,label){
   const win=makeWinCheck(seat,tile,'tsumo');
   if(seat===0){
     state.phase='human-turn';
-    if(win&&playOptions.autoWin){finishWin(0,'tsumo',tile,null,win);return;}
+    if(win&&isPlayOptionEnabled('autoWin')){finishWin(0,'tsumo',tile,null,win);return;}
     announce(win?'嶺上開花でツモできます！':'嶺上牌を引きました。カンか打牌を選んでください。');update();
   }else{
     state.phase='cpu-turn';update();schedule(cpuTurn,cpuPace(610));
@@ -479,6 +493,13 @@ function renderRiver(seat){
   const p=state.players[seat];const active=state.lastDiscard?.seat===seat;
   return `<div class="river river-${seat}"><div class="river-heading"><span>${p.name}</span><small>${p.discards.length}枚</small></div><div class="river-tiles">${p.discards.map((t,j)=>tileMarkup(t,active&&j===p.discards.length-1?'last-discard':'')).join('')}</div></div>`;
 }
+function renderPlayOption(key,label){
+  const choices=[['hand','ON'],['always','常時ON'],['off','OFF']];
+  return `<div class="assist-option" role="group" aria-label="${label}">
+    <span class="assist-caption">${label}</span>
+    <div class="assist-choices">${choices.map(([mode,name])=>`<button type="button" class="assist-toggle ${playOptions[key]===mode?'is-selected':''}" data-play-option="${key}" data-play-mode="${mode}" aria-pressed="${playOptions[key]===mode}">${name}</button>`).join('')}</div>
+  </div>`;
+}
 function renderHand(){
   const p=state.players[0];
   const canDiscard=state.phase==='human-turn';
@@ -517,10 +538,10 @@ function renderHand(){
   }
   return `<div class="hand-top"><div><span class="section-kicker">YOUR HAND</span><h2>あなたの手牌 <small>${windText[seatWind(0,state.dealer)]}家</small></h2></div><span class="hand-detail">${p.hand.length+3*p.melds.length}枚 ${p.riichi?'・リーチ中':''}</span></div>
   <div class="hand-area" aria-label="あなたの手牌">${buttons}</div>${showMelds}<div class="control-row">${action}</div>
-  <div class="assist-controls" role="group" aria-label="操作補助">
-    <span class="assist-caption">操作補助</span>
-    <button type="button" class="assist-toggle ${playOptions.noCalls?'is-on':''}" data-action="toggle-no-calls" aria-pressed="${playOptions.noCalls}">鳴き無し <b>${playOptions.noCalls?'ON':'OFF'}</b></button>
-    <button type="button" class="assist-toggle ${playOptions.autoWin?'is-on':''}" data-action="toggle-auto-win" aria-pressed="${playOptions.autoWin}">自動アガリ <b>${playOptions.autoWin?'ON':'OFF'}</b></button>
+  <div class="assist-controls" aria-label="操作補助">
+    ${renderPlayOption('noCalls','鳴き無し')}
+    ${renderPlayOption('autoWin','自動アガリ')}
+    <p class="assist-tip">ONはこの局のみ／常時ONは次局以降も継続</p>
   </div>${waitView}`;
 }
 function renderOutcome(){
@@ -558,16 +579,17 @@ function render(){
   $('#logs').innerHTML=state.logs.slice(0,5).map((s,i)=>`<div class="log-entry ${i===0?'latest':''}">${s}</div>`).join('');
   $('#overlays').innerHTML=(helpOpen?renderHelp():'')+(!helpOpen?renderOutcome():'');
 }
-// Toggle match-operation assistance without modifying the scoring rules.
-function togglePlayOption(key){
-  if(key!=='noCalls'&&key!=='autoWin')return;
-  playOptions[key]=!playOptions[key];
+// Switching between three explicit modes never changes the game rules.
+function setPlayOption(key,mode){
+  if(!['noCalls','autoWin'].includes(key)||!['off','hand','always'].includes(mode))return;
+  playOptions[key]=mode;
   savePlayOptions();
   if(!state)return;
-  if(key==='noCalls'&&playOptions.noCalls&&state.phase==='human-response'&&state.pending?.kind==='call'){
+  // The option takes effect immediately if the current decision is already awaiting input.
+  if(key==='noCalls'&&isPlayOptionEnabled(key)&&state.phase==='human-response'&&state.pending?.kind==='call'){
     humanRespond(false);return;
   }
-  if(key==='autoWin'&&playOptions.autoWin){
+  if(key==='autoWin'&&isPlayOptionEnabled(key)){
     if(state.phase==='human-response'&&['ron','chankan','ron-multi','chankan-multi'].includes(state.pending?.kind)){
       humanRespond(true);return;
     }
@@ -581,6 +603,8 @@ function togglePlayOption(key){
   render();
 }
 document.addEventListener('click',event=>{
+  const modeButton=event.target.closest('[data-play-option]');
+  if(modeButton){setPlayOption(modeButton.dataset.playOption,modeButton.dataset.playMode);return;}
   const kan=event.target.closest('[data-kan-type]');if(kan){humanKan(kan.dataset.kanType,kan.dataset.kanTile);return;}
   const tile=event.target.closest('[data-discard]');if(tile){humanDiscard(Number(tile.dataset.discard));return;}
   const action=event.target.closest('[data-action]')?.dataset.action;
@@ -588,8 +612,6 @@ document.addEventListener('click',event=>{
   if(action==='tsumo')humanTsumo();
   else if(action==='riichi')humanRiichi();
   else if(action==='waits'){showWaits=!showWaits;update();}
-  else if(action==='toggle-no-calls')togglePlayOption('noCalls');
-  else if(action==='toggle-auto-win')togglePlayOption('autoWin');
   else if(action==='accept')humanRespond(true);
   else if(action==='decline')humanRespond(false);
   else if(action==='call-pon')humanRespond('pon');
@@ -607,9 +629,9 @@ else{
   // A browser refresh must not interrupt already enabled automatic decisions.
   const kind=state.pending?.kind;
   const p=state.players[0];
-  if(playOptions.autoWin&&state.phase==='human-response'&&['ron','chankan','ron-multi','chankan-multi'].includes(kind))humanRespond(true);
-  else if(playOptions.noCalls&&state.phase==='human-response'&&kind==='call')humanRespond(false);
-  else if(playOptions.autoWin&&state.phase==='human-turn'&&p.drawIndex>=0&&makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))humanTsumo();
+  if(isPlayOptionEnabled('autoWin')&&state.phase==='human-response'&&['ron','chankan','ron-multi','chankan-multi'].includes(kind))humanRespond(true);
+  else if(isPlayOptionEnabled('noCalls')&&state.phase==='human-response'&&kind==='call')humanRespond(false);
+  else if(isPlayOptionEnabled('autoWin')&&state.phase==='human-turn'&&p.drawIndex>=0&&makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))humanTsumo();
   else{
     render();
     if(state.phase==='cpu-turn')schedule(cpuTurn,cpuPace(550));

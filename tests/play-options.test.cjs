@@ -19,28 +19,63 @@ function setup(seed={}){
   return {run:code=>vm.runInContext(code,ctx),data};
 }
 
-test('switches start off, render with accessible pressed state, and stay on across new matches',()=>{
+test('both controls expose three distinct modes, default OFF, and persistent modes survive new matches',()=>{
   const {run,data}=setup();
-  assert.deepEqual([...Object.values(run('playOptions'))],[false,false]);
-  let result=run('renderHand()');
-  assert.match(result,/鳴き無し <b>OFF<\/b>/);
-  assert.match(result,/自動アガリ <b>OFF<\/b>/);
-  assert.match(result,/aria-pressed="false"/);
-  run("togglePlayOption('noCalls');togglePlayOption('autoWin')");
-  result=run('renderHand()');
-  assert.match(result,/鳴き無し <b>ON<\/b>/);
-  assert.match(result,/自動アガリ <b>ON<\/b>/);
-  assert.match(result,/aria-pressed="true"/);
+  assert.deepEqual([...Object.values(run('playOptions'))],['off','off']);
+  let html=run('renderHand()');
+  for(const label of ['鳴き無し','自動アガリ'])assert.match(html,new RegExp(label));
+  for(const mode of ['hand','always','off'])assert.match(html,new RegExp('data-play-mode="'+mode+'"'));
+  assert.match(html,/ONはこの局のみ／常時ONは次局以降も継続/);
+  assert.match(html,/data-play-option="noCalls" data-play-mode="off" aria-pressed="true"/);
+  assert.match(html,/data-play-option="autoWin" data-play-mode="off" aria-pressed="true"/);
+  run("setPlayOption('noCalls','always');setPlayOption('autoWin','always')");
+  html=run('renderHand()');
+  assert.match(html,/data-play-option="noCalls" data-play-mode="always" aria-pressed="true"/);
+  assert.match(html,/data-play-option="autoWin" data-play-mode="always" aria-pressed="true"/);
   run('newGame()');
-  assert.equal(run('playOptions.noCalls'),true);
-  assert.equal(run('playOptions.autoWin'),true);
-  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:true,autoWin:true});
+  assert.equal(run('playOptions.noCalls'),'always');
+  assert.equal(run('playOptions.autoWin'),'always');
+  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:'always',autoWin:'always'});
   assert.equal(run('state.version'),5);
   const reloaded=setup(data);
-  assert.equal(reloaded.run('playOptions.noCalls'),true);
-  assert.equal(reloaded.run('playOptions.autoWin'),true);
+  assert.equal(reloaded.run('playOptions.noCalls'),'always');
+  assert.equal(reloaded.run('playOptions.autoWin'),'always');
 });
 
+test('ON applies only to the current hand while 常時ON persists through next hands',()=>{
+  const {run,data}=setup();
+  run("setPlayOption('noCalls','hand');setPlayOption('autoWin','always')");
+  assert.equal(run("isPlayOptionEnabled('noCalls')"),true);
+  assert.equal(run("isPlayOptionEnabled('autoWin')"),true);
+  const reloaded=setup(data);
+  assert.equal(reloaded.run('playOptions.noCalls'),'hand');
+  assert.equal(reloaded.run('playOptions.autoWin'),'always');
+  const updated=run('(()=>{startRound();return {noCalls:playOptions.noCalls,autoWin:playOptions.autoWin};})()');
+  assert.equal(updated.noCalls,'off');
+  assert.equal(updated.autoWin,'always');
+  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:'off',autoWin:'always'});
+});
+
+test('both temporary modes are reset on a new match; modes remain independent',()=>{
+  const {run}=setup();
+  run("setPlayOption('noCalls','hand');setPlayOption('autoWin','hand')");
+  const status=run('(()=>{newGame();return {noCalls:playOptions.noCalls,autoWin:playOptions.autoWin};})()');
+  assert.equal(status.noCalls,'off');
+  assert.equal(status.autoWin,'off');
+  run("setPlayOption('noCalls','always');setPlayOption('autoWin','hand')");
+  const second=run('(()=>{startRound();return {noCalls:playOptions.noCalls,autoWin:playOptions.autoWin};})()');
+  assert.equal(second.noCalls,'always');
+  assert.equal(second.autoWin,'off');
+});
+
+test('previous ON/OFF settings migrate safely without changing prior preferences',()=>{
+  const enabled=setup({'yaochu-mahjong-play-options-v1':JSON.stringify({noCalls:true,autoWin:false})});
+  assert.equal(enabled.run('playOptions.noCalls'),'always');
+  assert.equal(enabled.run('playOptions.autoWin'),'off');
+  const disabled=setup({'yaochu-mahjong-play-options-v1':JSON.stringify({noCalls:false,autoWin:true})});
+  assert.equal(disabled.run('playOptions.noCalls'),'off');
+  assert.equal(disabled.run('playOptions.autoWin'),'always');
+});
 test('no-calls skips an already open human pon/daiminkan prompt',()=>{
   const {run}=setup();
   const result=run(`(()=>{
@@ -50,7 +85,7 @@ test('no-calls skips an already open human pon/daiminkan prompt',()=>{
     state.phase='resolving';
     offerPonOrAdvance();
     const offered={kind:state.pending.kind,canKan:state.pending.canKan};
-    togglePlayOption('noCalls');
+    setPlayOption('noCalls','hand');
     return {offered,phase:state.phase,pending:state.pending,hand:state.players[0].hand.length};
   })()`);
   assert.equal(result.offered.kind,'call');
@@ -63,7 +98,7 @@ test('no-calls skips an already open human pon/daiminkan prompt',()=>{
 test('no-calls never prompts on a new discard and does not prevent ron',()=>{
   const {run}=setup();
   const result=run(`(()=>{
-    playOptions.noCalls=true;
+    playOptions.noCalls='hand';
     state.players[0].hand=['m1','m1','m1','red'];
     state.players[2].hand=[];state.players[3].hand=[];
     state.lastDiscard={seat:1,tile:'m1'};
@@ -93,7 +128,7 @@ test('auto-win immediately takes a ready tsumo when enabled during turn',()=>{
     state.players[0].drawIndex=13;state.players[0].discards=[];
     state.phase='human-turn';
     const before=state.players[0].points;
-    togglePlayOption('autoWin');
+    setPlayOption('autoWin','hand');
     return {phase:state.phase,outcome:state.outcome.type,winType:state.outcome.winType,winner:state.outcome.winner,
       points:state.players[0].points,before};
   })()`);
@@ -107,7 +142,7 @@ test('auto-win immediately takes a ready tsumo when enabled during turn',()=>{
 test('auto-win accepts human multi-ron alongside the CPU without losing the other claim',()=>{
   const {run}=setup();
   const x=run(`(()=>{
-    playOptions.autoWin=true;
+    playOptions.autoWin='hand';
     state.players.forEach((p,i)=>{
       p.hand=(i===0||i===2)?${JSON.stringify(readyHand)}:[];
       p.discards=[];p.melds=[];p.riichi=false;p.tempFuriten=false;p.riichiPassed=false;
@@ -125,7 +160,7 @@ test('auto-win accepts human multi-ron alongside the CPU without losing the othe
 test('auto-win accepts multiple chankan claims before upgrading the kan',()=>{
   const {run}=setup();
   const x=run(`(()=>{
-    playOptions.autoWin=true;
+    playOptions.autoWin='hand';
     state.players.forEach((p,i)=>{
       p.hand=(i===0||i===2)?${JSON.stringify(readyHand)}:[];
       p.discards=[];p.melds=[];p.riichi=false;p.tempFuriten=false;p.riichiPassed=false;
@@ -152,7 +187,7 @@ test('enabling auto-win during an existing ron prompt takes the win immediately'
     state.lastDiscard={seat:1,tile:'m1'};state.phase='resolving';
     resolveDiscard();
     const pending=state.pending.kind;
-    togglePlayOption('autoWin');
+    setPlayOption('autoWin','hand');
     return {pending,phase:state.phase,type:state.outcome?.type,winner:state.outcome?.winner};
   })()`);
   assert.equal(x.pending,'ron-multi');
