@@ -21,13 +21,15 @@ function setup(seed={}){
 
 test('both controls expose three distinct modes, default OFF, and persistent modes survive new matches',()=>{
   const {run,data}=setup();
-  assert.deepEqual([...Object.values(run('playOptions'))],['off','off']);
+  assert.deepEqual([...Object.values(run('playOptions'))],['off','off','off']);
   let html=run('renderHand()');
-  for(const label of ['鳴き無し','自動アガリ'])assert.match(html,new RegExp(label));
+  for(const label of ['鳴き無し','自動アガリ','自動ツモ切り'])assert.match(html,new RegExp(label));
   for(const mode of ['hand','always','off'])assert.match(html,new RegExp('data-play-mode="'+mode+'"'));
   assert.match(html,/ONはこの局のみ／常時ONは次局以降も継続/);
   assert.match(html,/data-play-option="noCalls" data-play-mode="off" aria-pressed="true"/);
   assert.match(html,/data-play-option="autoWin" data-play-mode="off" aria-pressed="true"/);
+  assert.match(html,/data-play-option="autoDiscard" data-play-mode="off" aria-pressed="true"/);
+  assert.match(html,/data-action="discard-drawn"/);
   run("setPlayOption('noCalls','always');setPlayOption('autoWin','always')");
   html=run('renderHand()');
   assert.match(html,/data-play-option="noCalls" data-play-mode="always" aria-pressed="true"/);
@@ -35,7 +37,7 @@ test('both controls expose three distinct modes, default OFF, and persistent mod
   run('newGame()');
   assert.equal(run('playOptions.noCalls'),'always');
   assert.equal(run('playOptions.autoWin'),'always');
-  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:'always',autoWin:'always'});
+  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:'always',autoWin:'always',autoDiscard:'off'});
   assert.equal(run('state.version'),5);
   const reloaded=setup(data);
   assert.equal(reloaded.run('playOptions.noCalls'),'always');
@@ -53,7 +55,7 @@ test('ON applies only to the current hand while 常時ON persists through next h
   const updated=run('(()=>{startRound();return {noCalls:playOptions.noCalls,autoWin:playOptions.autoWin};})()');
   assert.equal(updated.noCalls,'off');
   assert.equal(updated.autoWin,'always');
-  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:'off',autoWin:'always'});
+  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:'off',autoWin:'always',autoDiscard:'off'});
 });
 
 test('both temporary modes are reset on a new match; modes remain independent',()=>{
@@ -205,4 +207,84 @@ test('CPU animation delays are 1.75x faster, while human prompts retain their ti
   assert.equal(actual.delay560,320);
   assert.equal(actual.delay430,246);
   assert.equal(actual.delay610,349);
+});
+
+test('one-touch tsumogiri only discards the drawn tile and respects turn/riichi selection',()=>{
+  const {run}=setup();
+  const result=run(`(()=>{
+    const p=state.players[0];
+    p.hand=['m1','m9','p1','p9','s1','s9','east','south','west','north','white','green','red','m1'];
+    p.drawIndex=13;p.discards=[];state.phase='human-turn';state.riichiSelecting=false;
+    humanTsumogiri();
+    return {phase:state.phase,discarded:p.discards.at(-1),remaining:p.hand.length,drawIndex:p.drawIndex};
+  })()`);
+  assert.equal(result.phase,'resolving');
+  assert.equal(result.discarded,'m1');
+  assert.equal(result.remaining,13);
+  assert.equal(result.drawIndex,-1);
+  const blocked=run(`(()=>{
+    const p=state.players[0];
+    p.hand=['m1','m9','p1','p9','s1','s9','east','south','west','north','white','green','red','p1'];
+    p.drawIndex=13;p.discards=[];state.phase='human-turn';state.riichiSelecting=true;
+    humanTsumogiri();
+    return {discards:p.discards.length,phase:state.phase};
+  })()`);
+  assert.equal(blocked.discards,0);
+  assert.equal(blocked.phase,'human-turn');
+});
+
+test('automatic tsumogiri uses the existing discard rules and pauses on a winning draw',()=>{
+  const {run}=setup();
+  const discarded=run(`(()=>{
+    playOptions.autoDiscard='hand';
+    const p=state.players[0];
+    p.hand=['m1','m9','p1','p9','s1','s9','east','south','west','north','white','green','red','p1'];
+    p.drawIndex=13;p.discards=[];state.phase='human-turn';state.riichiSelecting=false;
+    autoTsumogiri();
+    return {phase:state.phase,discarded:p.discards.at(-1),remaining:p.hand.length};
+  })()`);
+  assert.equal(discarded.phase,'resolving');
+  assert.equal(discarded.discarded,'p1');
+  assert.equal(discarded.remaining,13);
+  const stopped=run(`(()=>{
+    const p=state.players[0];
+    p.hand=[...${JSON.stringify(readyHand)},'m1'];
+    p.drawIndex=13;p.discards=[];state.phase='human-turn';state.riichiSelecting=false;
+    autoTsumogiri();
+    return {phase:state.phase,discards:p.discards.length,canWin:!!makeWinCheck(0,'m1','tsumo')};
+  })()`);
+  assert.equal(stopped.canWin,true);
+  assert.equal(stopped.phase,'human-turn');
+  assert.equal(stopped.discards,0);
+});
+
+test('auto tsumogiri resets at the next hand but stays enabled in always mode',()=>{
+  const {run,data}=setup();
+  run("setPlayOption('autoDiscard','hand')");
+  assert.equal(run("isPlayOptionEnabled('autoDiscard')"),true);
+  assert.equal(run('playOptions.autoDiscard'),'hand');
+  run('startRound()');
+  assert.equal(run('playOptions.autoDiscard'),'off');
+  run("setPlayOption('autoDiscard','always')");
+  run('startRound()');
+  assert.equal(run('playOptions.autoDiscard'),'always');
+  assert.equal(JSON.parse(data['yaochu-mahjong-play-options-v1']).autoDiscard,'always');
+  const reloaded=setup(data);
+  assert.equal(reloaded.run('playOptions.autoDiscard'),'always');
+});
+
+test('enabling and disabling auto tsumogiri during a turn changes the active setting',()=>{
+  const {run}=setup();
+  const x=run(`(()=>{
+    const p=state.players[0];
+    p.hand=['m1','m9','p1','p9','s1','s9','east','south','west','north','white','green','red','p1'];
+    p.drawIndex=13;state.phase='human-turn';state.riichiSelecting=false;
+    setPlayOption('autoDiscard','hand');
+    const enabled=playOptions.autoDiscard;
+    setPlayOption('autoDiscard','off');
+    return {enabled,disabled:playOptions.autoDiscard,phase:state.phase};
+  })()`);
+  assert.equal(x.enabled,'hand');
+  assert.equal(x.disabled,'off');
+  assert.equal(x.phase,'human-turn');
 });

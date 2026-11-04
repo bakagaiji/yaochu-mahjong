@@ -14,15 +14,15 @@ function optionMode(value){
 function loadPlayOptions(){
   try{
     const value=JSON.parse(localStorage.getItem(playOptionsKey));
-    return {noCalls:optionMode(value?.noCalls),autoWin:optionMode(value?.autoWin)};
-  }catch{return {noCalls:'off',autoWin:'off'};}
+    return {noCalls:optionMode(value?.noCalls),autoWin:optionMode(value?.autoWin),autoDiscard:optionMode(value?.autoDiscard)};
+  }catch{return {noCalls:'off',autoWin:'off',autoDiscard:'off'};}
 }
 let playOptions=loadPlayOptions();
 function savePlayOptions(){try{localStorage.setItem(playOptionsKey,JSON.stringify(playOptions));}catch{}}
 function isPlayOptionEnabled(key){return playOptions[key]!=='off';}
 function resetHandPlayOptions(){
   let changed=false;
-  for(const key of ['noCalls','autoWin']){
+  for(const key of ['noCalls','autoWin','autoDiscard']){
     if(playOptions[key]==='hand'){playOptions[key]='off';changed=true;}
   }
   if(changed)savePlayOptions();
@@ -100,6 +100,7 @@ function startTurn(){
     if(win&&isPlayOptionEnabled('autoWin')){finishWin(0,'tsumo',tile,null,win);return;}
     announce(win?'ツモでアガれます！ 「ツモ」を押すか、牌を捨ててください。':'あなたの手番です。牌を選んで捨ててください。');
     update();
+    scheduleAutoTsumogiri();
   }else{
     state.phase='cpu-turn';
     announce(`${p.name}の手番です。`);update();
@@ -162,12 +163,35 @@ function humanRiichi(){
   if(state.riichiSelecting)announce('リーチする牌を選んでください。黄色い牌がリーチ可能な打牌です。');
   else announce('リーチ選択を解除しました。');
   update();
+  if(!state.riichiSelecting)scheduleAutoTsumogiri();
+  else if(isPlayOptionEnabled('autoDiscard'))cancelTimer();
 }
 function humanTsumo(){
   if(!state||state.phase!=='human-turn')return;
   const p=state.players[0];if(p.drawIndex<0)return;
   const tile=p.hand[p.drawIndex],win=makeWinCheck(0,tile,'tsumo');
   if(win)finishWin(0,'tsumo',tile,null,win);
+}
+// One-touch tsumogiri, using exactly the same legality checks as tapping the drawn tile.
+function humanTsumogiri(){
+  if(!state||state.phase!=='human-turn'||busy||state.riichiSelecting)return;
+  const p=state.players[0];
+  if(p.drawIndex<0||p.forbidden===p.hand[p.drawIndex])return;
+  humanDiscard(p.drawIndex);
+}
+// When automatic, allow a short look at the drawn tile; never silently skip an available tsumo.
+function scheduleAutoTsumogiri(){
+  if(!state||state.phase!=='human-turn'||!isPlayOptionEnabled('autoDiscard')||state.riichiSelecting||busy)return;
+  const p=state.players[0];
+  if(p.drawIndex<0||p.forbidden===p.hand[p.drawIndex])return;
+  if(makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))return;
+  schedule(autoTsumogiri,450);
+}
+function autoTsumogiri(){
+  if(!state||state.phase!=='human-turn'||!isPlayOptionEnabled('autoDiscard')||state.riichiSelecting)return;
+  const p=state.players[0];
+  if(p.drawIndex<0||makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))return;
+  humanTsumogiri();
 }
 function humanDiscard(index){
   if(!state||state.phase!=='human-turn'||busy)return;
@@ -399,6 +423,7 @@ function finishKan(seat,label){
     state.phase='human-turn';
     if(win&&isPlayOptionEnabled('autoWin')){finishWin(0,'tsumo',tile,null,win);return;}
     announce(win?'嶺上開花でツモできます！':'嶺上牌を引きました。カンか打牌を選んでください。');update();
+    scheduleAutoTsumogiri();
   }else{
     state.phase='cpu-turn';update();schedule(cpuTurn,cpuPace(610));
   }
@@ -519,6 +544,7 @@ function renderHand(){
     action=isRon||state.pending.kind==='chankan'?'<button class="btn btn-gold" data-action="accept">ロン！</button><button class="btn btn-light" data-action="decline">見送る</button>':`<button class="btn btn-gold" data-action="call-pon">ポン</button>${state.pending.canKan?'<button class="btn btn-gold" data-action="call-kan">大明槓</button>':''}<button class="btn btn-light" data-action="decline">見送る</button>`;
   }else if(canDiscard){
     action+=`<button class="btn btn-gold" data-action="tsumo" ${canTsumo?'':'disabled'}>ツモ！</button>`;
+    action+=`<button class="btn btn-light" data-action="discard-drawn" ${drawnIndex>=0&&!state.riichiSelecting?'':'disabled'}>ツモ切り</button>`;
     action+=`<button class="btn ${state.riichiSelecting?'btn-gold':'btn-light'}" data-action="riichi" ${canRiichi||state.riichiSelecting?'':'disabled'}>${state.riichiSelecting?'リーチ解除':'リーチ −1,000'}</button>`;
     for(const candidate of getKanCandidates(p)){action+=`<button class="btn btn-light" data-kan-type="${candidate.type}" data-kan-tile="${candidate.tile}">${candidate.type==='ankan'?'暗槓':'加槓'}・${TILE_INFO[candidate.tile].name}</button>`;}
     action+=`<button class="btn btn-ghost" data-action="waits">${showWaits?'待ち表示を閉じる':'待ち牌を確認'}</button>`;
@@ -541,7 +567,8 @@ function renderHand(){
   <div class="assist-controls" aria-label="操作補助">
     ${renderPlayOption('noCalls','鳴き無し')}
     ${renderPlayOption('autoWin','自動アガリ')}
-    <p class="assist-tip">ONはこの局のみ／常時ONは次局以降も継続</p>
+    ${renderPlayOption('autoDiscard','自動ツモ切り')}
+    <p class="assist-tip">ONはこの局のみ／常時ONは次局以降も継続。自動ツモ切りはアガリ可能時に停止</p>
   </div>${waitView}`;
 }
 function renderOutcome(){
@@ -581,13 +608,17 @@ function render(){
 }
 // Switching between three explicit modes never changes the game rules.
 function setPlayOption(key,mode){
-  if(!['noCalls','autoWin'].includes(key)||!['off','hand','always'].includes(mode))return;
+  if(!['noCalls','autoWin','autoDiscard'].includes(key)||!['off','hand','always'].includes(mode))return;
   playOptions[key]=mode;
   savePlayOptions();
   if(!state)return;
   // The option takes effect immediately if the current decision is already awaiting input.
   if(key==='noCalls'&&isPlayOptionEnabled(key)&&state.phase==='human-response'&&state.pending?.kind==='call'){
     humanRespond(false);return;
+  }
+  if(key==='autoDiscard'&&state.phase==='human-turn'){
+    if(isPlayOptionEnabled(key))scheduleAutoTsumogiri();
+    else cancelTimer();
   }
   if(key==='autoWin'&&isPlayOptionEnabled(key)){
     if(state.phase==='human-response'&&['ron','chankan','ron-multi','chankan-multi'].includes(state.pending?.kind)){
@@ -610,6 +641,7 @@ document.addEventListener('click',event=>{
   const action=event.target.closest('[data-action]')?.dataset.action;
   if(!action)return;
   if(action==='tsumo')humanTsumo();
+  else if(action==='discard-drawn')humanTsumogiri();
   else if(action==='riichi')humanRiichi();
   else if(action==='waits'){showWaits=!showWaits;update();}
   else if(action==='accept')humanRespond(true);
@@ -637,5 +669,6 @@ else{
     if(state.phase==='cpu-turn')schedule(cpuTurn,cpuPace(550));
     else if(state.phase==='turn-start')schedule(startTurn,state.turn===0?550:cpuPace(550));
     else if(state.phase==='resolving')schedule(resolveDiscard,state.lastDiscard?.seat===0?550:cpuPace(550));
+    else if(state.phase==='human-turn')scheduleAutoTsumogiri();
   }
 }
