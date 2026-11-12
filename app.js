@@ -658,7 +658,7 @@ function setPlayOption(key,mode){
   if(key==='noCalls'&&isPlayOptionEnabled(key)&&state.phase==='human-response'&&state.pending?.kind==='call'){
     humanRespond(false);return;
   }
-  if(key==='autoDiscard'&&state.phase==='human-turn'&&!isAiEnabled(){
+  if(key==='autoDiscard'&&state.phase==='human-turn'&&!isAiEnabled()){
     if(isPlayOptionEnabled(key))scheduleAutoTsumogiri();
     else cancelTimer();
   }
