@@ -25,7 +25,7 @@ test('both controls expose three distinct modes, default OFF, and persistent mod
   let html=run('renderHand()');
   for(const label of ['鳴き無し','自動アガリ','自動ツモ切り'])assert.match(html,new RegExp(label));
   for(const mode of ['hand','always','off'])assert.match(html,new RegExp('data-play-mode="'+mode+'"'));
-  assert.match(html,/ONはこの局のみ／常時ONは次局以降も継続/);
+  assert.match(html,/ON＝この局のみ／常時ON＝次局以降も継続/);
   assert.match(html,/data-play-option="noCalls" data-play-mode="off" aria-pressed="true"/);
   assert.match(html,/data-play-option="autoWin" data-play-mode="off" aria-pressed="true"/);
   assert.match(html,/data-play-option="autoDiscard" data-play-mode="off" aria-pressed="true"/);
