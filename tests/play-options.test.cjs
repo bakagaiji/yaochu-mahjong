@@ -21,7 +21,7 @@ function setup(seed={}){
 
 test('both controls expose three distinct modes, default OFF, and persistent modes survive new matches',()=>{
   const {run,data}=setup();
-  assert.deepEqual([...Object.values(run('playOptions'))],['off','off','off']);
+  assert.deepEqual([...Object.values(run('playOptions'))],['off','off','off','off']);
   let html=run('renderHand()');
   for(const label of ['鳴き無し','自動アガリ','自動ツモ切り'])assert.match(html,new RegExp(label));
   for(const mode of ['hand','always','off'])assert.match(html,new RegExp('data-play-mode="'+mode+'"'));
@@ -38,7 +38,7 @@ test('both controls expose three distinct modes, default OFF, and persistent mod
   run('newGame()');
   assert.equal(run('playOptions.noCalls'),'always');
   assert.equal(run('playOptions.autoWin'),'always');
-  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:'always',autoWin:'always',autoDiscard:'off'});
+  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:'always',autoWin:'always',autoDiscard:'off',fullAi:'off'});
   assert.equal(run('state.version'),5);
   const reloaded=setup(data);
   assert.equal(reloaded.run('playOptions.noCalls'),'always');
@@ -56,7 +56,7 @@ test('ON applies only to the current hand while 常時ON persists through next h
   const updated=run('(()=>{startRound();return {noCalls:playOptions.noCalls,autoWin:playOptions.autoWin};})()');
   assert.equal(updated.noCalls,'off');
   assert.equal(updated.autoWin,'always');
-  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:'off',autoWin:'always',autoDiscard:'off'});
+  assert.deepEqual(JSON.parse(data['yaochu-mahjong-play-options-v1']),{noCalls:'off',autoWin:'always',autoDiscard:'off',fullAi:'off'});
 });
 
 test('both temporary modes are reset on a new match; modes remain independent',()=>{
