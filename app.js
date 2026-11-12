@@ -14,15 +14,16 @@ function optionMode(value){
 function loadPlayOptions(){
   try{
     const value=JSON.parse(localStorage.getItem(playOptionsKey));
-    return {noCalls:optionMode(value?.noCalls),autoWin:optionMode(value?.autoWin),autoDiscard:optionMode(value?.autoDiscard)};
-  }catch{return {noCalls:'off',autoWin:'off',autoDiscard:'off'};}
+    return {noCalls:optionMode(value?.noCalls),autoWin:optionMode(value?.autoWin),autoDiscard:optionMode(value?.autoDiscard),fullAi:optionMode(value?.fullAi)};
+  }catch{return {noCalls:'off',autoWin:'off',autoDiscard:'off',fullAi:'off'};}
 }
 let playOptions=loadPlayOptions();
 function savePlayOptions(){try{localStorage.setItem(playOptionsKey,JSON.stringify(playOptions));}catch{}}
 function isPlayOptionEnabled(key){return playOptions[key]!=='off';}
+function isAiEnabled(){return isPlayOptionEnabled('fullAi');}
 function resetHandPlayOptions(){
   let changed=false;
-  for(const key of ['noCalls','autoWin','autoDiscard']){
+  for(const key of ['noCalls','autoWin','autoDiscard','fullAi']){
     if(playOptions[key]==='hand'){playOptions[key]='off';changed=true;}
   }
   if(changed)savePlayOptions();
@@ -47,7 +48,7 @@ function load(){
     return null;
   } catch {return null;}
 }
-function update(){render();save();}
+function update(){render();save();if(state?.phase==='hand-end'&&isAiEnabled())scheduleAiNextRound();}
 function cancelTimer(){if(timer){clearTimeout(timer);timer=null;}}
 function schedule(fn,ms=550){cancelTimer();timer=setTimeout(()=>{timer=null;fn();},ms);}
 // Only animation/turn pacing is scaled. All CPU move selection and scoring stay unchanged.
@@ -97,10 +98,10 @@ function startTurn(){
   if(state.turn===0){
     state.phase='human-turn';
     const win=makeWinCheck(0,tile,'tsumo');
-    if(win&&isPlayOptionEnabled('autoWin')){finishWin(0,'tsumo',tile,null,win);return;}
+    if(win&&(isPlayOptionEnabled('autoWin')||isAiEnabled())){finishWin(0,'tsumo',tile,null,win);return;}
     announce(win?'ツモでアガれます！ 「ツモ」を押すか、牌を捨ててください。':'あなたの手番です。牌を選んで捨ててください。');
     update();
-    scheduleAutoTsumogiri();
+    scheduleHumanAutomation(cpuPace(650));
   }else{
     state.phase='cpu-turn';
     announce(`${p.name}の手番です。`);update();
@@ -133,7 +134,7 @@ function handOptions(p){const info=[];
   return info.sort((a,b)=>b.score-a.score);
 }
 function cpuTurn(){
-  if(state.phase!=='cpu-turn')return;
+  if(state.phase!=='cpu-turn'&&!(state.phase==='human-turn'&&state.turn===0&&isAiEnabled()&&!helpOpen))return;
   const seat=state.turn,p=state.players[seat];
   const tile=p.hand[p.drawIndex];
   const win=p.drawIndex>=0?makeWinCheck(seat,tile,'tsumo'):null;
@@ -181,6 +182,7 @@ function humanTsumogiri(){
 }
 // When automatic, allow a short look at the drawn tile; never silently skip an available tsumo.
 function scheduleAutoTsumogiri(){
+  if(isAiEnabled())return;
   if(!state||state.phase!=='human-turn'||!isPlayOptionEnabled('autoDiscard')||state.riichiSelecting||busy)return;
   const p=state.players[0];
   if(p.drawIndex<0||p.forbidden===p.hand[p.drawIndex])return;
@@ -188,6 +190,7 @@ function scheduleAutoTsumogiri(){
   schedule(autoTsumogiri,450);
 }
 function autoTsumogiri(){
+  if(isAiEnabled())return;
   if(!state||state.phase!=='human-turn'||!isPlayOptionEnabled('autoDiscard')||state.riichiSelecting)return;
   const p=state.players[0];
   if(p.drawIndex<0||makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))return;
@@ -273,7 +276,7 @@ function resolveDiscard(){
   const candidates=ronCandidates(disc,tile);
   if(!candidates.length){offerPonOrAdvance();return;}
   if(candidates.some(c=>c.winner===0)){
-    if(isPlayOptionEnabled('autoWin')){finishRonCandidates(candidates,disc,tile);return;}
+    if(isPlayOptionEnabled('autoWin')||isAiEnabled()){finishRonCandidates(candidates,disc,tile);return;}
     state.phase='human-response';state.pending={kind:'ron-multi',tile,disc,candidates};
     announce(candidates.length>1?`ダブロン・トリロンのチャンス！ ${candidates.length}人がロンできます。`:'ロンできます。アガるか見送るかを選択してください。');
     update();return;
@@ -287,7 +290,9 @@ function offerPonOrAdvance(){
   const p=state.players[0];
   if(disc!==0 && !isPlayOptionEnabled('noCalls') && !p.riichi && p.melds.length<4 && p.hand.filter(t=>t===tile).length>=2){
     state.phase='human-response';state.pending={kind:'call',tile,disc,canKan:p.hand.filter(t=>t===tile).length>=3&&canKan()};
-    announce(`${TILE_INFO[tile].name}を鳴けます。`);update();return;
+    announce(`${TILE_INFO[tile].name}を鳴けます。`);update();
+    if(isAiEnabled()&&!helpOpen)schedule(aiRespond,cpuPace(500));
+    return;
   }
   cpuPonOrAdvance();
 }
@@ -337,7 +342,7 @@ function executePon(seat,tile,disc){
   state.players.forEach(pl=>pl.ippatsu=false);
   state.turn=seat;state.pending=null;
   announce(`${p.name}、ポン！`);
-  if(seat===0){state.phase='human-turn';update();}
+  if(seat===0){state.phase='human-turn';update();scheduleHumanAutomation(cpuPace(570));}
   else{state.phase='cpu-turn';update();schedule(cpuTurn,cpuPace(570));}
 }
 // One fixed 8-tile supplementary stack supports at most 7 successful kans.
@@ -353,7 +358,7 @@ function getKanCandidates(p){
 }
 function shouldCpuDaiminkan(seat,tile){
   const p=state.players[seat];
-  return seat!==0 && !p.riichi && p.melds.length<4 && canKan() && p.hand.filter(t=>t===tile).length>=3 && Math.random()<0.76;
+  return (seat!==0||isAiEnabled()) && !p.riichi && p.melds.length<4 && canKan() && p.hand.filter(t=>t===tile).length>=3 && Math.random()<0.76;
 }
 function humanKan(type,tile){
   if(!state || state.phase!=='human-turn' || busy)return;
@@ -368,7 +373,7 @@ function declareKan(seat,type,tile){
     const candidates=ronCandidates(seat,tile,{chankan:true});
     if(candidates.length){
       if(candidates.some(c=>c.winner===0)){
-        if(isPlayOptionEnabled('autoWin')){finishRonCandidates(candidates,seat,tile);return;}
+        if(isPlayOptionEnabled('autoWin')||isAiEnabled()){finishRonCandidates(candidates,seat,tile);return;}
         state.phase='human-response';state.pending={kind:'chankan-multi',tile,disc:seat,candidates};
         announce(candidates.length>1?'槍槓で複数人がロンできます！':'槍槓でロンできます。');update();return;
       }
@@ -421,9 +426,9 @@ function finishKan(seat,label){
   const win=makeWinCheck(seat,tile,'tsumo');
   if(seat===0){
     state.phase='human-turn';
-    if(win&&isPlayOptionEnabled('autoWin')){finishWin(0,'tsumo',tile,null,win);return;}
+    if(win&&(isPlayOptionEnabled('autoWin')||isAiEnabled())){finishWin(0,'tsumo',tile,null,win);return;}
     announce(win?'嶺上開花でツモできます！':'嶺上牌を引きました。カンか打牌を選んでください。');update();
-    scheduleAutoTsumogiri();
+    scheduleHumanAutomation(cpuPace(610));
   }else{
     state.phase='cpu-turn';update();schedule(cpuTurn,cpuPace(610));
   }
@@ -527,12 +532,12 @@ function renderPlayOption(key,label){
 }
 function renderHand(){
   const p=state.players[0];
-  const canDiscard=state.phase==='human-turn';
+  const canDiscard=state.phase==='human-turn'&&!isAiEnabled();
   const readyChoices=state.riichiSelecting?getTenpaiDiscards(p.hand,p.melds):[];
   const drawnIndex=p.drawIndex;
   const canTsumo=canDiscard && drawnIndex>=0 && !!makeWinCheck(0,p.hand[drawnIndex],'tsumo');
   const canRiichi=canDiscard&&!p.riichi&&!p.melds.length&&p.points>=1000 && getTenpaiDiscards(p.hand,p.melds).length>0;
-  const needAction=state.phase==='human-response';
+  const needAction=state.phase==='human-response'&&!isAiEnabled();
   const showMelds=p.melds.length?`<div class="human-melds"><span class="small-caption">鳴き・カン</span>${p.melds.map(m=>`<div class="meld-block">${meldMarkup(m)}</div>`).join('')}</div>`:'';
   const buttons=p.hand.map((t,i)=>{
     const allowed=canDiscard && (!p.riichi||i===drawnIndex) && (!p.forbidden||p.forbidden!==t) && (!state.riichiSelecting||readyChoices.includes(i));
@@ -565,10 +570,11 @@ function renderHand(){
   return `<div class="hand-top"><div><span class="section-kicker">YOUR HAND</span><h2>あなたの手牌 <small>${windText[seatWind(0,state.dealer)]}家</small></h2></div><span class="hand-detail">${p.hand.length+3*p.melds.length}枚 ${p.riichi?'・リーチ中':''}</span></div>
   <div class="hand-area" aria-label="あなたの手牌">${buttons}</div>${showMelds}<div class="control-row">${action}</div>
   <div class="assist-controls" aria-label="操作補助">
+    ${renderPlayOption('fullAi','お任せAI')}
     ${renderPlayOption('noCalls','鳴き無し')}
     ${renderPlayOption('autoWin','自動アガリ')}
     ${renderPlayOption('autoDiscard','自動ツモ切り')}
-    <p class="assist-tip">ONはこの局のみ／常時ONは次局以降も継続。自動ツモ切りはアガリ可能時に停止</p>
+    <p class="assist-tip">ON＝この局のみ／常時ON＝次局以降も継続。お任せAIは打牌・鳴き・アガリ・次局進行まで自動操作（鳴き無し設定は尊重）</p>
   </div>${waitView}`;
 }
 function renderOutcome(){
@@ -587,7 +593,7 @@ function renderOutcome(){
   ?`<span class="section-kicker">${o.winType==='tsumo'?'TSUMO':'RON'} · 東${state.round}局 ${state.honba}本場</span><h2>${names[o.winner]}のアガリ</h2><div class="agari-label">完成した手牌（右端がアガリ牌）</div><div class="agari-row"><div class="agari-concealed">${(o.concealed||[]).map(t=>tileMarkup(t)).join('')}${tileMarkup(o.tile,'winning-tile')}</div>${o.melds?.length?`<div class="agari-melds">${o.melds.map(m=>meldMarkup(m)).join('')}</div>`:''}</div>${renderResultDora(o)}<div class="big-score">${o.scoreName}</div><div class="pay-caption">${o.pay.description}${o.pot?` ＋供託${f(o.pot)}点`:''}</div><div class="yaku-list">${o.win.yaku.map(y=>`<span>${y.name}${y.han?` <b>${y.han}翻</b>`:''}</span>`).join('')}</div><p class="score-sub">${o.win.yakuman?'複合役満':o.win.han>=13?`数え${o.win.han}翻`:`${o.win.han}翻・${o.win.fu}符`}</p>`
   :o.type==='abort'?`<span class="section-kicker">ABORTIVE DRAW · 東${state.round}局 ${state.honba}本場</span><h2>8カン流れ</h2><p>8回目のカンが宣言されたため途中流局しました。ノーテン罰符はありません。</p>`
   :`<span class="section-kicker">RYŪKYOKU · 東${state.round}局 ${state.honba}本場</span><h2>流局</h2><p>山の牌がなくなりました。ノーテン罰符3,000点を精算します。</p><div class="draw-status">${state.players.map((p,i)=>`<div>${p.name}<b>${o.ready[i]?'テンパイ':'ノーテン'}</b><span>${o.deltas[i]>=0?'+':''}${f(o.deltas[i])}点</span></div>`).join('')}</div>`;
-  return `<div class="modal-layer"><section class="modal outcome" role="dialog" aria-modal="true" aria-label="局の結果">${content}${isTobi()?'<p class="tobi-banner">持ち点がマイナスになったため、この局で終局します。</p>':''}<div class="mini-scores">${state.players.map((p,i)=>`<span>${p.name} <b>${f(p.points)}</b></span>`).join('')}</div><button class="btn btn-gold wide" data-action="next">${nextLabel}</button></section></div>`;
+  return `<div class="modal-layer"><section class="modal outcome" role="dialog" aria-modal="true" aria-label="局の結果">${content}${isTobi()?'<p class="tobi-banner">持ち点がマイナスになったため、この局で終局します。</p>':''}<div class="mini-scores">${state.players.map((p,i)=>`<span>${p.name} <b>${f(p.points)}</b></span>`).join('')}</div><button class="btn btn-gold wide" data-action="next">${nextLabel}</button>${isAiEnabled()?'<p class="assist-tip">お任せAIが数秒後に次局へ進みます。</p><button class="btn btn-light ai-stop-button" data-action="stop-ai">お任せAIを停止する</button>':''}</section></div>`;
 }
 function renderHelp(){return `<div class="modal-layer" data-backdrop="help"><section class="modal help" role="dialog" aria-modal="true" aria-label="遊び方"><div class="modal-heading"><span class="section-kicker">HOW TO PLAY</span><button class="close" data-action="close-help" aria-label="閉じる">×</button></div><h2>么九麻雀の遊び方</h2><p>1・9の数牌6種類と字牌7種類だけを使い、あなた対CPU3人で戦う東風戦です。</p><div class="rule-grid"><div><b>牌は計156枚</b><span>13種類を各12枚。52枚を配牌、残り104枚のうち24枚をドラ表示牌8枚・裏ドラ表示牌8枚・嶺上牌8枚として確保します。通常山は80枚です。</span></div><div><b>アガリの形</b><span>刻子4組＋雀頭、七対子、国士無双。順子は作れません。</span></div><div><b>できる宣言</b><span>リーチ・ポン・ロン・ツモ・暗槓・大明槓・加槓。チー・赤ドラはありません。ドラ・裏ドラ・カンドラ・カン裏ドラがあります。</span></div><div><b>点数と進行</b><span>5万点持ち。通常の翻・符を基準に計算します。親アガリ・親テンパイ流局は親続行。ロンは1本場+300点、ツモは各家+100点。通常流局・8カン流れで本場が増えます。誰かの持ち点がマイナスになったら飛び終了です（0点ちょうどは続行）。</span></div><div><b>ロンとフリテン</b><span>自分の捨て牌に待ち牌があればロン不可。ロン見送り後は次の自摸まで不可（リーチ中の見送りは局終了まで不可）。同時ロンはダブロン・トリロンを認め、放銃者が各アガリ者に支払います。供託は放銃者から近い順の最初のアガリ者に渡し、全員分を精算した後に飛び判定します。</span></div><div><b>流局</b><span>通常の山が尽きると流局（3,000点精算）。8カン流れは途中流局（精算なし・親続行）。通常流局は親がテンパイなら親続行です。立直アガリには裏ドラ、暗槓は即めくり、明槓・加槓は打牌が成立してからめくります（連続カン時は次の嶺上ツモ前）。役満にはドラを加算しません。リーチ供託は次局へ持ち越し。</span></div></div><p class="help-note">么九牌12枚仕様に合わせたオリジナルルールです。ドラは1↔9、東→南→西→北→東、白→發→中→白の順で、重複表示牌のドラも重複計算します。カン後は嶺上牌を引き、嶺上開花・槍槓もあります。立直後のカンは不可。暗槓への国士無双の槍槓は採用しません。ポン直後の同種打牌は不可。CPUは他家の手牌を覗きません。</p><button class="btn btn-gold wide" data-action="close-help">対局に戻る</button></section></div>`;}
 function render(){
@@ -606,17 +612,53 @@ function render(){
   $('#logs').innerHTML=state.logs.slice(0,5).map((s,i)=>`<div class="log-entry ${i===0?'latest':''}">${s}</div>`).join('');
   $('#overlays').innerHTML=(helpOpen?renderHelp():'')+(!helpOpen?renderOutcome():'');
 }
+
+function scheduleHumanAutomation(delay=550){
+  if(!state||state.phase!=='human-turn'||state.turn!==0||helpOpen)return;
+  if(isAiEnabled())schedule(cpuTurn,delay);
+  else scheduleAutoTsumogiri();
+}
+function aiRespond(){
+  if(!state||helpOpen||!isAiEnabled()||state.phase!=='human-response'||!state.pending)return;
+  const {kind,tile,canKan:offeredKan}=state.pending;
+  if(kind==='call'){
+    if(isPlayOptionEnabled('noCalls')){humanRespond(false);return;}
+    if(offeredKan&&shouldCpuDaiminkan(0,tile)){humanRespond('kan');return;}
+    if(shouldCpuPon(0,tile)){humanRespond('pon');return;}
+    humanRespond(false);
+  }else if(['ron','ron-multi','chankan','chankan-multi'].includes(kind))humanRespond(true);
+}
+function scheduleAiNextRound(){
+  if(!state||helpOpen||!isAiEnabled()||state.phase!=='hand-end')return;
+  schedule(()=>{if(state?.phase==='hand-end'&&isAiEnabled()&&!helpOpen)nextRound();},
+    state.outcome?.type==='multi-win'?7500:4800);
+}
+function resumeAiOnPhase(){
+  if(!state||helpOpen||!isAiEnabled())return;
+  if(state.phase==='human-turn'&&state.turn===0)schedule(cpuTurn,cpuPace(600));
+  else if(state.phase==='human-response')schedule(aiRespond,cpuPace(480));
+  else if(state.phase==='hand-end')scheduleAiNextRound();
+}
 // Switching between three explicit modes never changes the game rules.
 function setPlayOption(key,mode){
-  if(!['noCalls','autoWin','autoDiscard'].includes(key)||!['off','hand','always'].includes(mode))return;
+  if(!['noCalls','autoWin','autoDiscard','fullAi'].includes(key)||!['off','hand','always'].includes(mode))return;
   playOptions[key]=mode;
   savePlayOptions();
   if(!state)return;
+  if(key==='fullAi'){
+    if(state.riichiSelecting&&isAiEnabled()){state.riichiSelecting=false;save();}
+    if(['human-turn','human-response','hand-end'].includes(state.phase)){
+      cancelTimer();
+      if(isAiEnabled())resumeAiOnPhase();
+      else if(state.phase==='human-turn')scheduleAutoTsumogiri();
+    }
+    render();return;
+  }
   // The option takes effect immediately if the current decision is already awaiting input.
   if(key==='noCalls'&&isPlayOptionEnabled(key)&&state.phase==='human-response'&&state.pending?.kind==='call'){
     humanRespond(false);return;
   }
-  if(key==='autoDiscard'&&state.phase==='human-turn'){
+  if(key==='autoDiscard'&&state.phase==='human-turn'&&!isAiEnabled(){
     if(isPlayOptionEnabled(key))scheduleAutoTsumogiri();
     else cancelTimer();
   }
@@ -648,9 +690,10 @@ document.addEventListener('click',event=>{
   else if(action==='decline')humanRespond(false);
   else if(action==='call-pon')humanRespond('pon');
   else if(action==='call-kan')humanRespond('kan');
-  else if(action==='help'){helpOpen=true;render();}
-  else if(action==='close-help'){helpOpen=false;render();}
+  else if(action==='help'){helpOpen=true;if(isAiEnabled()&&['human-turn','human-response','hand-end'].includes(state?.phase))cancelTimer();render();}
+  else if(action==='close-help'){helpOpen=false;render();resumeAiOnPhase();}
   else if(action==='next')nextRound();
+  else if(action==='stop-ai')setPlayOption('fullAi','off');
   else if(action==='restart')newGame();
   else if(action==='new-game'){if(confirm('現在の対局を終了し、新しく始めますか？'))newGame();}
 });
@@ -661,14 +704,16 @@ else{
   // A browser refresh must not interrupt already enabled automatic decisions.
   const kind=state.pending?.kind;
   const p=state.players[0];
-  if(isPlayOptionEnabled('autoWin')&&state.phase==='human-response'&&['ron','chankan','ron-multi','chankan-multi'].includes(kind))humanRespond(true);
+  if(isAiEnabled()&&state.phase==='human-response'){render();resumeAiOnPhase();}
+  else if(isPlayOptionEnabled('autoWin')&&state.phase==='human-response'&&['ron','chankan','ron-multi','chankan-multi'].includes(kind))humanRespond(true);
   else if(isPlayOptionEnabled('noCalls')&&state.phase==='human-response'&&kind==='call')humanRespond(false);
-  else if(isPlayOptionEnabled('autoWin')&&state.phase==='human-turn'&&p.drawIndex>=0&&makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))humanTsumo();
+  else if((isPlayOptionEnabled('autoWin')||isAiEnabled())&&state.phase==='human-turn'&&p.drawIndex>=0&&makeWinCheck(0,p.hand[p.drawIndex],'tsumo'))humanTsumo();
   else{
     render();
     if(state.phase==='cpu-turn')schedule(cpuTurn,cpuPace(550));
     else if(state.phase==='turn-start')schedule(startTurn,state.turn===0?550:cpuPace(550));
     else if(state.phase==='resolving')schedule(resolveDiscard,state.lastDiscard?.seat===0?550:cpuPace(550));
-    else if(state.phase==='human-turn')scheduleAutoTsumogiri();
+    else if(state.phase==='human-turn')scheduleHumanAutomation(cpuPace(550));
+    else if(state.phase==='hand-end'&&isAiEnabled())scheduleAiNextRound();
   }
 }

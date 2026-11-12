@@ -84,3 +84,6 @@ body{margin:0;min-width:320px;background:radial-gradient(ellipse at top left,#fd
 .assist-toggle:focus-visible{outline:2px solid #b88a37;outline-offset:2px}
 .assist-tip{font-size:10px;color:#6f847a;margin:1px 0 0;text-align:center;line-height:1.4}
 @media(max-width:720px){.assist-controls{gap:7px;margin-top:9px;padding-top:9px}.assist-option{gap:6px}.assist-caption{min-width:70px;font-size:11px}.assist-toggle{padding:7px 10px;font-size:11px;min-height:32px}}
+
+/* Full-AI result-screen escape control. */
+.ai-stop-button{display:block;max-width:270px;width:100%;margin:10px auto 0}
