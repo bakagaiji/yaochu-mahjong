@@ -4,6 +4,73 @@ const $=s=>document.querySelector(s);
 const names=['あなた','CPU・青龍','CPU・白虎','CPU・朱雀'];
 const windText={east:'東',south:'南',west:'西',north:'北'};
 const storeKey='yaochu-mahjong-v5';
+// The display preference is independent of match saves and rule options.
+const viewModeKey='yaochu-mahjong-table-view-v1';
+function loadViewMode(){
+  try{return localStorage.getItem(viewModeKey)==='tabletop'?'tabletop':'standard';}
+  catch{return 'standard';}
+}
+let viewMode=loadViewMode();
+function applyViewMode(){
+  const tabletop=viewMode==='tabletop';
+  $('#standard-table').hidden=tabletop;
+  $('#standard-player-zone').hidden=tabletop;
+  $('#topdown-view').hidden=!tabletop;
+  for(const [id,active] of [['#view-standard',!tabletop],['#view-tabletop',tabletop]]){
+    const button=$(id);
+    button.className=active?'view-button is-current':'view-button';
+    button.setAttribute?.('aria-pressed',String(active));
+  }
+}
+function setViewMode(mode){
+  if(mode!=='standard'&&mode!=='tabletop')return;
+  viewMode=mode;
+  try{localStorage.setItem(viewModeKey,mode);}catch{}
+  render();
+  if(mode==='tabletop'){
+    // Show the center of the table first when horizontal scrolling is needed.
+    const scroll=$('.topdown-scroll');
+    if(scroll&&scroll.scrollWidth>scroll.clientWidth)
+      scroll.scrollLeft=Math.round((scroll.scrollWidth-scroll.clientWidth)/2);
+  }
+}
+function renderTabletopSeat(seat){
+  const p=state.players[seat];
+  const side=seat===1||seat===3;
+  const wind=windText[seatWind(seat,state.dealer)];
+  const backs=Array.from({length:Math.min(14,p.hand.length)},()=>'<span class="tile-back"></span>').join('');
+  return `<div class="td-seat-heading">
+    <strong>${p.name}</strong><small>${wind}家${p.riichi?' · リーチ':''}</small>
+    <span class="td-score">${f(p.points)} 点</span></div>
+    <div class="td-seat-tiles ${side?'is-vertical':''}" aria-label="裏向きの手牌 ${p.hand.length}枚">${backs}</div>
+    ${p.melds.length?`<div class="td-seat-melds">${p.melds.map(m=>meldMarkup(m)).join('')}</div>`:''}`;
+}
+function renderTabletopRiver(seat){
+  const p=state.players[seat];
+  const active=state.lastDiscard?.seat===seat;
+  return `<div class="td-river-label"><span>${p.name}</span><small>${p.discards.length}枚</small></div>
+  <div class="td-river-tiles" aria-label="${p.name}の捨て牌">
+    ${p.discards.map((t,i)=>tileMarkup(t,active&&i===p.discards.length-1?'last-discard':'')).join('')}
+  </div>`;
+}
+function renderTabletop(handMarkup){
+  for(const seat of [1,2,3]){
+    const element=$(`#td-seat-${seat}`);
+    element.className=`topdown-seat td-seat-${seat===1?'right':seat===2?'top':'left'}${state.turn===seat&&!state.handEnded?' is-active':''}`;
+    element.innerHTML=renderTabletopSeat(seat);
+  }
+  for(const seat of [0,1,2,3])$(`#td-river-${seat}`).innerHTML=renderTabletopRiver(seat);
+  $('#td-round').textContent=`東${state.round}局 ${state.honba}本場`;
+  $('#td-wall').textContent=state.wall.length;
+  $('#td-kan').textContent=state.kanCount;
+  $('#td-pot').textContent=f(state.riichiPot);
+  $('#td-dora').innerHTML=renderDoraIndicators();
+  $('#td-self-wind').textContent=`${windText[seatWind(0,state.dealer)]}家${state.players[0].riichi?' · リーチ':''}`;
+  $('#td-self-score').textContent=`${f(state.players[0].points)} 点`;
+  $('#td-hand-panel').innerHTML=handMarkup;
+  $('#td-notice').textContent=state.notice;
+}
+
 const legacyStoreKey='yaochu-mahjong-v4';
 const playOptionsKey='yaochu-mahjong-play-options-v1';
 // 'hand' applies only to the current hand; 'always' stays active across hands.
@@ -598,6 +665,7 @@ function renderOutcome(){
 function renderHelp(){return `<div class="modal-layer" data-backdrop="help"><section class="modal help" role="dialog" aria-modal="true" aria-label="遊び方"><div class="modal-heading"><span class="section-kicker">HOW TO PLAY</span><button class="close" data-action="close-help" aria-label="閉じる">×</button></div><h2>么九麻雀の遊び方</h2><p>1・9の数牌6種類と字牌7種類だけを使い、あなた対CPU3人で戦う東風戦です。</p><div class="rule-grid"><div><b>牌は計156枚</b><span>13種類を各12枚。52枚を配牌、残り104枚のうち24枚をドラ表示牌8枚・裏ドラ表示牌8枚・嶺上牌8枚として確保します。通常山は80枚です。</span></div><div><b>アガリの形</b><span>刻子4組＋雀頭、七対子、国士無双。順子は作れません。</span></div><div><b>できる宣言</b><span>リーチ・ポン・ロン・ツモ・暗槓・大明槓・加槓。チー・赤ドラはありません。ドラ・裏ドラ・カンドラ・カン裏ドラがあります。</span></div><div><b>点数と進行</b><span>5万点持ち。通常の翻・符を基準に計算します。親アガリ・親テンパイ流局は親続行。ロンは1本場+300点、ツモは各家+100点。通常流局・8カン流れで本場が増えます。誰かの持ち点がマイナスになったら飛び終了です（0点ちょうどは続行）。</span></div><div><b>ロンとフリテン</b><span>自分の捨て牌に待ち牌があればロン不可。ロン見送り後は次の自摸まで不可（リーチ中の見送りは局終了まで不可）。同時ロンはダブロン・トリロンを認め、放銃者が各アガリ者に支払います。供託は放銃者から近い順の最初のアガリ者に渡し、全員分を精算した後に飛び判定します。</span></div><div><b>流局</b><span>通常の山が尽きると流局（3,000点精算）。8カン流れは途中流局（精算なし・親続行）。通常流局は親がテンパイなら親続行です。立直アガリには裏ドラ、暗槓は即めくり、明槓・加槓は打牌が成立してからめくります（連続カン時は次の嶺上ツモ前）。役満にはドラを加算しません。リーチ供託は次局へ持ち越し。</span></div></div><p class="help-note">么九牌12枚仕様に合わせたオリジナルルールです。ドラは1↔9、東→南→西→北→東、白→發→中→白の順で、重複表示牌のドラも重複計算します。カン後は嶺上牌を引き、嶺上開花・槍槓もあります。立直後のカンは不可。暗槓への国士無双の槍槓は採用しません。ポン直後の同種打牌は不可。CPUは他家の手牌を覗きません。</p><button class="btn btn-gold wide" data-action="close-help">対局に戻る</button></section></div>`;}
 function render(){
   if(!state)return;
+  applyViewMode();
   $('#round-label').textContent=`東${state.round}局 ${state.honba}本場`;
   $('#dealer-label').textContent=`親：${names[state.dealer]}`;
   $('#wall-count').textContent=state.wall.length;
@@ -607,7 +675,9 @@ function render(){
   $('#opp-grid').innerHTML=[1,2,3].map(i=>displayPlayer(state.players[i],i)).join('');
   $('#river-grid').innerHTML=[2,3,1,0].map(i=>renderRiver(i)).join('');
   $('#my-score').textContent=f(state.players[0].points);
-  $('#hand-panel').innerHTML=renderHand();
+  const handMarkup=renderHand();
+  $('#hand-panel').innerHTML=handMarkup;
+  if(viewMode==='tabletop')renderTabletop(handMarkup);
   $('#notice').textContent=state.notice;
   $('#logs').innerHTML=state.logs.slice(0,5).map((s,i)=>`<div class="log-entry ${i===0?'latest':''}">${s}</div>`).join('');
   $('#overlays').innerHTML=(helpOpen?renderHelp():'')+(!helpOpen?renderOutcome():'');
@@ -682,7 +752,9 @@ document.addEventListener('click',event=>{
   const tile=event.target.closest('[data-discard]');if(tile){humanDiscard(Number(tile.dataset.discard));return;}
   const action=event.target.closest('[data-action]')?.dataset.action;
   if(!action)return;
-  if(action==='tsumo')humanTsumo();
+  if(action==='view-standard')setViewMode('standard');
+  else if(action==='view-tabletop')setViewMode('tabletop');
+  else if(action==='tsumo')humanTsumo();
   else if(action==='discard-drawn')humanTsumogiri();
   else if(action==='riichi')humanRiichi();
   else if(action==='waits'){showWaits=!showWaits;update();}

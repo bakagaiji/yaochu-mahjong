@@ -17,7 +17,14 @@
     </header>
     <main class="game-layout">
       <div class="game-intro"><div><span class="section-kicker">EAST ROUND · FOUR PLAYERS</span><h2>端と字だけで、打ち合う。</h2><p>13種類・各12枚の3セット仕様。ドラ・裏ドラとカンで、派手に打とう。</p></div><div class="round-chip"><strong id="round-label">東1局 0本場</strong><span id="dealer-label">親：あなた</span></div></div>
-      <section class="table-zone" aria-label="麻雀卓">
+      <nav class="view-switch" aria-label="ゲーム画面の表示切り替え">
+        <div class="view-switch-label"><span class="section-kicker">TABLE VIEW</span><span>画面表示</span></div>
+        <div class="view-switch-buttons" role="group" aria-label="表示モード">
+          <button type="button" id="view-standard" class="view-button is-current" data-action="view-standard" aria-pressed="true">標準表示</button>
+          <button type="button" id="view-tabletop" class="view-button" data-action="view-tabletop" aria-pressed="false">卓上表示 <span class="view-preview-label">試作版</span></button>
+        </div>
+      </nav>
+      <section id="standard-table" class="table-zone" aria-label="麻雀卓">
         <div id="opp-grid" class="opp-grid"></div>
         <div class="table-felt">
           <div class="felt-topline"><span class="felt-label">DISCARDS <span class="circle-marker"></span> 捨て牌</span><div class="center-stats"><span>残り <strong id="wall-count">80</strong> 枚</span><span>カン <strong id="kan-count">0</strong> / 8　供託 <strong id="riichi-pot">0</strong> 点</span></div></div>
@@ -25,7 +32,40 @@
           <div id="river-grid" class="river-grid"></div>
         </div>
       </section>
-      <section class="player-zone" aria-label="自分の手番">
+      <section id="topdown-view" class="topdown-view" aria-label="俯瞰で見る麻雀卓" hidden>
+        <div class="topdown-heading">
+          <div><span class="section-kicker">OVERHEAD TABLE · BETA</span><h2>卓上表示</h2></div>
+          <p>東家の位置は親番に応じて変わります。対面・左右の席はあなたからの相対位置です。</p>
+        </div>
+        <div class="topdown-scroll" tabindex="0" role="region" aria-label="四人麻雀の卓。画面が狭い場合は横にスクロールできます">
+          <div class="topdown-board">
+            <div class="topdown-seat td-seat-top" id="td-seat-2"></div>
+            <div class="topdown-seat td-seat-left" id="td-seat-3"></div>
+            <div class="topdown-seat td-seat-right" id="td-seat-1"></div>
+            <div class="topdown-mat" aria-label="各席の捨て牌と局情報">
+              <div class="topdown-river td-river-top" id="td-river-2"></div>
+              <div class="topdown-river td-river-left" id="td-river-3"></div>
+              <div class="topdown-river td-river-right" id="td-river-1"></div>
+              <div class="topdown-river td-river-bottom" id="td-river-0"></div>
+              <div class="topdown-center">
+                <span class="td-center-overline">EAST ROUND</span>
+                <strong id="td-round">東1局 0本場</strong>
+                <div class="td-center-stats"><span>残り <b id="td-wall">80</b> 枚</span><span>カン <b id="td-kan">0</b></span><span>供託 <b id="td-pot">0</b> 点</span></div>
+                <div id="td-dora" class="td-center-dora"></div>
+              </div>
+            </div>
+            <div class="topdown-self-seat">
+              <span class="td-self-marker">自家</span><strong>あなた <span id="td-self-wind">東家</span></strong>
+              <span id="td-self-score">50,000 点</span>
+            </div>
+          </div>
+        </div>
+        <div class="topdown-player">
+          <div id="td-hand-panel" class="hand-panel"></div>
+          <div id="td-notice" class="notice" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+      <section id="standard-player-zone" class="player-zone" aria-label="自分の手番">
         <div class="player-score"><div><span class="score-avatar" aria-hidden="true">人</span><div><span class="score-caption">PLAYER 01</span><strong>あなた</strong></div></div><div><strong id="my-score">50,000</strong><span>点</span></div></div>
         <div id="hand-panel" class="hand-panel"></div>
         <div id="notice" class="notice" role="status" aria-live="polite"></div>
